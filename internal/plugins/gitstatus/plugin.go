@@ -3,9 +3,12 @@ package gitstatus
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sst/sidecar/internal/plugin"
 	"github.com/sst/sidecar/internal/state"
 )
@@ -24,6 +27,7 @@ const (
 	ViewModeHistory                      // Commit browser
 	ViewModeCommitDetail                 // Single commit files
 	ViewModeDiff                         // Enhanced diff view
+	ViewModeCommit                       // Commit message editor
 )
 
 // Plugin implements the git status plugin.
@@ -65,6 +69,11 @@ type Plugin struct {
 
 	// Watcher
 	watcher *Watcher
+
+	// Commit state
+	commitMessage    textarea.Model
+	commitError      string
+	commitInProgress bool
 }
 
 // New creates a new git status plugin.
@@ -131,6 +140,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p.updateCommitDetail(msg)
 		case ViewModeDiff:
 			return p.updateDiff(msg)
+		case ViewModeCommit:
+			return p.updateCommit(msg)
 		}
 
 	case RefreshMsg:
@@ -156,6 +167,20 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case CommitDetailLoadedMsg:
 		p.selectedCommit = msg.Commit
+		return p, nil
+
+	case CommitSuccessMsg:
+		// Commit succeeded, return to status view and refresh
+		p.viewMode = ViewModeStatus
+		p.commitMessage.Reset()
+		p.commitInProgress = false
+		p.commitError = ""
+		return p, p.refresh()
+
+	case CommitErrorMsg:
+		// Commit failed, show error and keep message for retry
+		p.commitError = msg.Err.Error()
+		p.commitInProgress = false
 		return p, nil
 
 	case tea.WindowSizeMsg:
@@ -197,7 +222,19 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		if len(entries) > 0 && p.cursor < len(entries) {
 			entry := entries[p.cursor]
 			if !entry.Staged {
+				stagedCount := len(p.tree.Staged)
+				totalEntries := len(entries)
+
 				if err := p.tree.StageFile(entry.Path); err == nil {
+					// After staging, move cursor to first unstaged file position
+					// New staged count will be stagedCount + 1
+					newFirstUnstaged := stagedCount + 1
+					if newFirstUnstaged < totalEntries {
+						p.cursor = newFirstUnstaged
+					} else {
+						// All files are now staged, stay at last position
+						p.cursor = totalEntries - 1
+					}
 					return p, p.refresh()
 				}
 			}
@@ -238,6 +275,20 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "r":
 		return p, p.refresh()
+
+	case "S":
+		// Stage all files
+		if err := p.tree.StageAll(); err == nil {
+			return p, p.refresh()
+		}
+
+	case "c":
+		// Enter commit mode only if staged files exist
+		if p.tree.HasStagedFiles() {
+			p.viewMode = ViewModeCommit
+			p.initCommitTextarea()
+			return p, nil
+		}
 	}
 
 	return p, nil
@@ -408,6 +459,8 @@ func (p *Plugin) View(width, height int) string {
 		return p.renderCommitDetail()
 	case ViewModeDiff:
 		return p.renderDiffModal()
+	case ViewModeCommit:
+		return p.renderCommit()
 	default:
 		return p.renderMain()
 	}
@@ -424,6 +477,8 @@ func (p *Plugin) Commands() []plugin.Command {
 	return []plugin.Command{
 		{ID: "stage-file", Name: "Stage file", Context: "git-status"},
 		{ID: "unstage-file", Name: "Unstage file", Context: "git-status"},
+		{ID: "stage-all", Name: "Stage all", Context: "git-status"},
+		{ID: "commit", Name: "Commit", Context: "git-status"},
 		{ID: "show-diff", Name: "Show diff", Context: "git-status"},
 		{ID: "show-history", Name: "Show history", Context: "git-status"},
 		{ID: "open-file", Name: "Open file", Context: "git-status"},
@@ -433,6 +488,8 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "view-diff", Name: "View diff", Context: "git-commit-detail"},
 		{ID: "close-diff", Name: "Close diff", Context: "git-diff"},
 		{ID: "scroll", Name: "Scroll", Context: "git-diff"},
+		{ID: "cancel", Name: "Cancel", Context: "git-commit"},
+		{ID: "execute-commit", Name: "Commit", Context: "git-commit"},
 	}
 }
 
@@ -445,6 +502,8 @@ func (p *Plugin) FocusContext() string {
 		return "git-commit-detail"
 	case ViewModeDiff:
 		return "git-diff"
+	case ViewModeCommit:
+		return "git-commit"
 	default:
 		return "git-status"
 	}
@@ -560,6 +619,13 @@ type HistoryLoadedMsg struct {
 type CommitDetailLoadedMsg struct {
 	Commit *Commit
 }
+type CommitSuccessMsg struct {
+	Hash    string
+	Subject string
+}
+type CommitErrorMsg struct {
+	Err error
+}
 
 // loadHistory loads commit history.
 func (p *Plugin) loadHistory() tea.Cmd {
@@ -635,4 +701,58 @@ func TickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return RefreshMsg{}
 	})
+}
+
+// initCommitTextarea initializes the commit message textarea.
+func (p *Plugin) initCommitTextarea() {
+	p.commitMessage = textarea.New()
+	p.commitMessage.SetValue("") // Ensure empty
+	p.commitMessage.Placeholder = "Type your commit message..."
+	// Make placeholder more visible (default color 240 is too dim)
+	p.commitMessage.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color("248"))
+	p.commitMessage.Focus()
+	p.commitMessage.CharLimit = 0
+	p.commitMessage.SetWidth(60)
+	p.commitMessage.SetHeight(5)
+	p.commitError = ""
+}
+
+// updateCommit handles key events in the commit view.
+func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		// Cancel commit, return to status
+		p.viewMode = ViewModeStatus
+		p.commitError = ""
+		return p, nil
+
+	case "alt+enter", "alt+s":
+		// Execute commit if message not empty
+		message := strings.TrimSpace(p.commitMessage.Value())
+		if message == "" {
+			p.commitError = "Commit message cannot be empty"
+			return p, nil
+		}
+		p.commitInProgress = true
+		return p, p.doCommit(message)
+	}
+
+	// Pass other keys to textarea
+	var cmd tea.Cmd
+	p.commitMessage, cmd = p.commitMessage.Update(msg)
+	return p, cmd
+}
+
+// doCommit executes the git commit asynchronously.
+func (p *Plugin) doCommit(message string) tea.Cmd {
+	workDir := p.ctx.WorkDir
+	return func() tea.Msg {
+		hash, err := ExecuteCommit(workDir, message)
+		if err != nil {
+			return CommitErrorMsg{Err: err}
+		}
+		// Extract first line as subject
+		subject := strings.Split(message, "\n")[0]
+		return CommitSuccessMsg{Hash: hash, Subject: subject}
+	}
 }

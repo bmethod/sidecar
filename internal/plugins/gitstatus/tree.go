@@ -346,3 +346,57 @@ func (t *FileTree) UnstageFile(path string) error {
 	cmd.Dir = t.workDir
 	return cmd.Run()
 }
+
+// StageAll stages all modified and untracked files.
+func (t *FileTree) StageAll() error {
+	cmd := exec.Command("git", "add", "-A")
+	cmd.Dir = t.workDir
+	return cmd.Run()
+}
+
+// HasStagedFiles returns true if there are any staged files.
+func (t *FileTree) HasStagedFiles() bool {
+	return len(t.Staged) > 0
+}
+
+// StagedStats returns total additions and deletions for staged files.
+func (t *FileTree) StagedStats() (additions, deletions int) {
+	for _, e := range t.Staged {
+		additions += e.DiffStats.Additions
+		deletions += e.DiffStats.Deletions
+	}
+	return
+}
+
+// ExecuteCommit executes a git commit with the given message.
+// Returns the commit hash on success or an error with git output on failure.
+func ExecuteCommit(workDir, message string) (string, error) {
+	cmd := exec.Command("git", "commit", "-m", message)
+	cmd.Dir = workDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", &CommitError{Output: string(output), Err: err}
+	}
+
+	// Parse output for commit hash (format: '[branch hash] message')
+	lines := strings.Split(string(output), "\n")
+	if len(lines) > 0 {
+		// Extract hash from "[branch hash] message"
+		re := regexp.MustCompile(`\[[\w/-]+ ([a-f0-9]+)\]`)
+		matches := re.FindStringSubmatch(lines[0])
+		if len(matches) > 1 {
+			return matches[1], nil
+		}
+	}
+	return "", nil
+}
+
+// CommitError wraps a git commit error with its output.
+type CommitError struct {
+	Output string
+	Err    error
+}
+
+func (e *CommitError) Error() string {
+	return strings.TrimSpace(e.Output)
+}

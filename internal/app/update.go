@@ -120,14 +120,22 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.SetActivePlugin(idx)
 		}
 		// Fall through to forward to plugin
-	case "g":
-		return m, m.FocusPluginByID("git-status")
-	case "t":
-		return m, m.FocusPluginByID("td-monitor")
-	case "c":
-		return m, m.FocusPluginByID("conversations")
-	case "f":
-		return m, m.FocusPluginByID("file-browser")
+	case "g", "t", "c", "f":
+		// Only switch plugins in global context; forward to plugin otherwise
+		// Plugin-specific bindings take precedence (e.g., 'c' for commit in git-status)
+		if m.activeContext == "global" || m.activeContext == "" {
+			switch msg.String() {
+			case "g":
+				return m, m.FocusPluginByID("git-status")
+			case "t":
+				return m, m.FocusPluginByID("td-monitor")
+			case "c":
+				return m, m.FocusPluginByID("conversations")
+			case "f":
+				return m, m.FocusPluginByID("file-browser")
+			}
+		}
+		// Fall through to forward to plugin
 	}
 
 	// Toggles

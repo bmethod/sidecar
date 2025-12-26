@@ -7,7 +7,7 @@ Add commit message writing and "stage all" functionality to the existing git sta
 ## User Preferences
 
 - Keep single-file s/u staging, add "stage all" with `S` key
-- Commit execution: `Ctrl+Enter`
+- Commit execution: `Alt+Enter`
 - Show summary stats (+/- totals, file count) in commit view header
 
 ## Files to Modify
@@ -76,7 +76,7 @@ func Commit(workDir, message string) (string, error) {
 **New updateCommit() method:**
 
 - `Esc` - Cancel, return to status
-- `Ctrl+Enter` - Execute commit (validate non-empty message)
+- `Alt+Enter` - Execute commit (validate non-empty message)
 - Other keys - Pass to textarea
 
 ### 6. Add Message Types
@@ -105,7 +105,7 @@ Renders:
  │                                        │
  └────────────────────────────────────────┘
  ──────────────────────────────────────────
-  Esc  Cancel   Ctrl+Enter  Commit
+  Esc  Cancel   Alt+Enter  Commit
 ```
 
 ### 8. Wire Up in Update() and View()
@@ -132,7 +132,7 @@ Renders:
 | `S`          | git-status | Stage all modified/untracked    |
 | `c`          | git-status | Enter commit mode (if staged)   |
 | `Esc`        | git-commit | Cancel commit, return to status |
-| `Ctrl+Enter` | git-commit | Execute commit                  |
+| `Alt+Enter`  | git-commit | Execute commit                  |
 
 ## Error Handling
 

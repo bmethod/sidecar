@@ -23,10 +23,11 @@ Comprehensive guidance for plugin and core implementers on defining, wiring, and
 5. **Test footer/help**: with the plugin focused, footer hints and `?` help should show your bindings. If not, check that command IDs + contexts match bindings.
 
 ## Context and focus rules
-- Global bindings always apply; plugin bindings only apply when that context is active.
-- **Numeric keys (1-9) are context-aware**: They switch plugins only in "global" context. In plugin-specific contexts (e.g., `td-monitor`), they are forwarded to the plugin. This allows plugins like td-monitor to use 1, 2, 3 for internal navigation (pane switching) without conflict.
+- **Plugin-specific bindings take precedence over global bindings.** When a plugin returns a non-global context from `FocusContext()`, its bindings are checked first.
+- **Only `tab` and `shift+tab` always work for plugin switching.** These are the only keys that unconditionally switch plugins regardless of context.
+- **All other plugin-switch keys are context-aware**: Keys like `g`, `t`, `c`, `f` and `1-9` only switch plugins in "global" context. In plugin-specific contexts (e.g., `git-status`), they are forwarded to the plugin. This allows plugins to use these keys for internal actions (e.g., `c` for commit in git-status, `1-3` for pane switching in td-monitor).
 - Switching plugins calls `SetFocused` on the old/new plugin; update any context-dependent state there if needed.
-- When inside subviews (e.g., diff modal), return a sub-context (`git-diff`) so only relevant bindings display.
+- When inside subviews (e.g., diff modal, commit editor), return a sub-context (`git-diff`, `git-commit`) so only relevant bindings display and global shortcuts don't interfere.
 
 ## Sequences
 - Register multi-key bindings using space separation (e.g., `g g`).
