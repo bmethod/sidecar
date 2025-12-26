@@ -43,3 +43,4 @@ config.local.json
 # Temporary files
 /tmp/
 *.tmp
+.todos/

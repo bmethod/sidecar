@@ -12,8 +12,9 @@ A standalone Go TUI that runs alongside AI coding agents, displaying real-time s
 
 ## Scope Notes
 
-- **Monorepo default**: Project root == `WorkDir`; adapters treat `project` as the root path
-- **TD data source**: `{projectRoot}/.td/todos.db` (schema/queries from `../td` at `~/code/td`)
+- **Monorepo default**: Project root == `WorkDir` (aka `projectRoot`)
+- **TD data source**: `{projectRoot}/.todos/issues.db` (read-only; schema/queries from `../td` at `~/code/td`)
+- **TD write actions**: Any mutations (approve/review/delete) must call the `td` CLI in `projectRoot`—never write to SQLite directly
 - **Multi-repo future**: Keep adapter APIs project-root based; config can add a `projects` section later
 
 ---
@@ -110,7 +111,7 @@ type Plugin interface {
 
 // Context provides shared resources to plugins
 type Context struct {
-    WorkDir      string                      // Current working directory
+    WorkDir      string                      // Current project root (aka projectRoot)
     ConfigDir    string                      // ~/.config/sidecar/
     Adapters     map[string]adapter.Adapter  // Available agent adapters
     EventBus     *event.Dispatcher           // Typed event bus (fan-out, buffered)
@@ -148,18 +149,18 @@ type Adapter interface {
     Name() string
 
     // Detection
-    Detect(workDir string) (bool, error)     // Is this agent active here?
+    Detect(projectRoot string) (bool, error) // Is this agent active for this project root?
     
     // Capabilities (what can this adapter provide?)
     Capabilities() CapabilitySet
 
     // Data access (return ErrNotSupported if capability missing)
-    Sessions(project string) ([]Session, error)
+    Sessions(projectRoot string) ([]Session, error)
     Messages(sessionID string) ([]Message, error)
     Usage(sessionID string) (*UsageStats, error)
 
     // Watching
-    Watch(project string) (<-chan Event, error)
+    Watch(projectRoot string) (<-chan Event, error)
 }
 
 type CapabilitySet struct {
@@ -172,7 +173,7 @@ type CapabilitySet struct {
 
 type Session struct {
     ID        string
-    Project   string
+    ProjectRoot string
     StartedAt time.Time
     UpdatedAt time.Time
     Model     string
@@ -239,6 +240,11 @@ Managing `activeContext` is the most common source of bugs in this pattern.
 - **Propagation**: Plugins should return a `FocusContext()` string. The root model polls this on every plugin switch.
 - **Modals**: When a modal is open (e.g., Diff View), the context must switch to the modal's ID (e.g., "git-diff") and switch back when closed.
 
+### Key chords (e.g. `g g`)
+Some bindings are key sequences (two or more keys pressed in order), written with spaces (e.g. `"g g"`).
+- **Implementation**: Track a pending sequence in the root key handler with a short timeout (e.g. 500ms). Reset on timeout or on an unmatched key.
+- **Rule**: Match sequences before single-key bindings in the same context to avoid ambiguity.
+
 ### Default Bindings
 
 | Key | Command | Context |
@@ -249,6 +255,7 @@ Managing `activeContext` is the most common source of bugs in this pattern.
 | `1-9` | focus-plugin-n | global |
 | `?` | toggle-help | global |
 | `!` | toggle-diagnostics | global |
+| `ctrl+h` | toggle-footer | global |
 | `r` | refresh | global |
 | `j`, `down` | cursor-down | global |
 | `k`, `up` | cursor-up | global |
@@ -276,7 +283,9 @@ Managing `activeContext` is the most common source of bugs in this pattern.
 - Inline diff stats (+/-) per file
 - Diff modal (full unified diff)
 - Stage/unstage individual files or hunks
-- Auto-refresh via fsnotify on `.git/index`
+- Auto-refresh (hybrid):
+  - fsnotify on `.git/index` and `.git/HEAD` for staging/branch changes
+  - polling `git status --porcelain=v2 -z` on a short interval (debounced) to catch working tree edits
 
 **Data Sources:**
 - `git status --porcelain=v2 -z` (structured output)
@@ -315,10 +324,11 @@ Managing `activeContext` is the most common source of bugs in this pattern.
 - Task list (ready/reviewable/blocked)
 - Activity feed (recent logs, handoffs)
 - Issue detail modal with markdown rendering
-- Approve/review actions
+- Approve/review/delete actions (invoke `td` CLI)
 
 **Data Source:**
-- SQLite database at `{projectRoot}/.td/todos.db` (read-only)
+- SQLite database at `{projectRoot}/.todos/issues.db` (read-only)
+- Write actions invoke the `td` CLI (cwd = `projectRoot`); never write to SQLite directly
 - Reuse schema/query patterns from `../td` (~/code/td)
 - Poll interval: 2s (configurable)
 
@@ -394,11 +404,12 @@ Managing `activeContext` is the most common source of bugs in this pattern.
 ### Hybrid Approach (Simple & Robust)
 
 1. **fsnotify (Reactive)**:
-   - Use for `.git/index` and Claude Code session files.
+   - Use for `.git/index`, `.git/HEAD`, and Claude Code session files.
+   - Note: `.git/index` doesn't change for normal working tree edits, so `git status` still needs polling.
    - Run in a goroutine, sending a `tea.Msg` to the main loop on change.
 
-2. **Polling (Fallback)**:
-   - Use for SQLite (`.td/todos.db`) or when fsnotify is unreliable.
+2. **Polling (Fallback / Primary for some data)**:
+   - Use for SQLite (`.todos/issues.db`) and as the primary refresh for `git status` (short interval, debounced), or when fsnotify is unreliable.
    - **Implementation**: Use standard `tea.Tick` or a recursive `tea.Cmd` pattern.
    - Avoid complex "Watcher" structs if a simple `time.Sleep` loop in a command works.
 
@@ -514,7 +525,7 @@ func (m Model) viewDiagnostics() string {
     "td-monitor": {
       "enabled": true,
       "refreshInterval": "2s",
-      "dbPath": ".td/todos.db"
+      "dbPath": ".todos/issues.db"
     },
     "conversations": {
       "enabled": true,
