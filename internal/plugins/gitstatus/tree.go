@@ -1,0 +1,348 @@
+package gitstatus
+
+import (
+	"bufio"
+	"bytes"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+// FileStatus represents the git status of a file.
+type FileStatus string
+
+const (
+	StatusModified  FileStatus = "M"
+	StatusAdded     FileStatus = "A"
+	StatusDeleted   FileStatus = "D"
+	StatusRenamed   FileStatus = "R"
+	StatusCopied    FileStatus = "C"
+	StatusUntracked FileStatus = "?"
+	StatusIgnored   FileStatus = "!"
+	StatusUnmerged  FileStatus = "U"
+)
+
+// FileEntry represents a single file in the git status.
+type FileEntry struct {
+	Path       string
+	Status     FileStatus
+	Staged     bool
+	Unstaged   bool
+	OldPath    string // For renames
+	DiffStats  DiffStats
+	IsExpanded bool
+}
+
+// DiffStats holds addition/deletion counts.
+type DiffStats struct {
+	Additions int
+	Deletions int
+}
+
+// FileTree groups files by status category.
+type FileTree struct {
+	Staged    []*FileEntry
+	Modified  []*FileEntry
+	Untracked []*FileEntry
+	workDir   string
+}
+
+// NewFileTree creates an empty file tree for the given work directory.
+func NewFileTree(workDir string) *FileTree {
+	return &FileTree{workDir: workDir}
+}
+
+// Refresh reloads the git status from disk.
+func (t *FileTree) Refresh() error {
+	t.Staged = nil
+	t.Modified = nil
+	t.Untracked = nil
+
+	// Run git status with porcelain v2 format (null-separated)
+	cmd := exec.Command("git", "status", "--porcelain=v2", "-z")
+	cmd.Dir = t.workDir
+	output, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+
+	if err := t.parseStatus(output); err != nil {
+		return err
+	}
+
+	// Get diff stats for all files
+	if err := t.loadDiffStats(); err != nil {
+		// Non-fatal: continue without stats
+	}
+
+	return nil
+}
+
+// parseStatus parses the git status --porcelain=v2 -z output.
+func (t *FileTree) parseStatus(output []byte) error {
+	// Split on null bytes
+	parts := bytes.Split(output, []byte{0})
+
+	i := 0
+	for i < len(parts) {
+		if len(parts[i]) == 0 {
+			i++
+			continue
+		}
+
+		line := string(parts[i])
+
+		// Porcelain v2 format:
+		// 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+		// 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>\t<origPath>
+		// ? <path>
+
+		if strings.HasPrefix(line, "1 ") {
+			entry := t.parseOrdinaryEntry(line)
+			if entry != nil {
+				t.addEntry(entry)
+			}
+		} else if strings.HasPrefix(line, "2 ") {
+			// Renamed/copied entry - next part has old path
+			entry := t.parseRenamedEntry(line)
+			if entry != nil {
+				i++
+				if i < len(parts) {
+					entry.OldPath = string(parts[i])
+				}
+				t.addEntry(entry)
+			}
+		} else if strings.HasPrefix(line, "? ") {
+			entry := &FileEntry{
+				Path:     strings.TrimPrefix(line, "? "),
+				Status:   StatusUntracked,
+				Unstaged: true,
+			}
+			t.Untracked = append(t.Untracked, entry)
+		} else if strings.HasPrefix(line, "u ") {
+			// Unmerged entry
+			entry := t.parseUnmergedEntry(line)
+			if entry != nil {
+				t.addEntry(entry)
+			}
+		}
+
+		i++
+	}
+
+	// Sort all lists by path
+	sort.Slice(t.Staged, func(i, j int) bool { return t.Staged[i].Path < t.Staged[j].Path })
+	sort.Slice(t.Modified, func(i, j int) bool { return t.Modified[i].Path < t.Modified[j].Path })
+	sort.Slice(t.Untracked, func(i, j int) bool { return t.Untracked[i].Path < t.Untracked[j].Path })
+
+	return nil
+}
+
+// parseOrdinaryEntry parses a "1 <XY> ..." line.
+func (t *FileTree) parseOrdinaryEntry(line string) *FileEntry {
+	// Format: 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+	fields := strings.SplitN(line, " ", 9)
+	if len(fields) < 9 {
+		return nil
+	}
+
+	xy := fields[1]
+	path := fields[8]
+
+	entry := &FileEntry{
+		Path: path,
+	}
+
+	// X = index status, Y = worktree status
+	if len(xy) >= 2 {
+		indexStatus := xy[0]
+		worktreeStatus := xy[1]
+
+		// Staged changes
+		if indexStatus != '.' && indexStatus != '?' {
+			entry.Staged = true
+			entry.Status = FileStatus(string(indexStatus))
+		}
+
+		// Unstaged changes
+		if worktreeStatus != '.' && worktreeStatus != '?' {
+			entry.Unstaged = true
+			if !entry.Staged {
+				entry.Status = FileStatus(string(worktreeStatus))
+			}
+		}
+	}
+
+	return entry
+}
+
+// parseRenamedEntry parses a "2 <XY> ..." line.
+func (t *FileTree) parseRenamedEntry(line string) *FileEntry {
+	// Format: 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>
+	fields := strings.SplitN(line, " ", 10)
+	if len(fields) < 10 {
+		return nil
+	}
+
+	xy := fields[1]
+	path := fields[9]
+
+	entry := &FileEntry{
+		Path:   path,
+		Status: StatusRenamed,
+		Staged: true,
+	}
+
+	// Check if there are also worktree changes
+	if len(xy) >= 2 && xy[1] != '.' {
+		entry.Unstaged = true
+	}
+
+	return entry
+}
+
+// parseUnmergedEntry parses a "u ..." line.
+func (t *FileTree) parseUnmergedEntry(line string) *FileEntry {
+	// Format: u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+	fields := strings.SplitN(line, " ", 11)
+	if len(fields) < 11 {
+		return nil
+	}
+
+	return &FileEntry{
+		Path:     fields[10],
+		Status:   StatusUnmerged,
+		Unstaged: true,
+	}
+}
+
+// addEntry adds an entry to the appropriate list.
+func (t *FileTree) addEntry(entry *FileEntry) {
+	if entry.Staged {
+		t.Staged = append(t.Staged, entry)
+	}
+	if entry.Unstaged && !entry.Staged {
+		t.Modified = append(t.Modified, entry)
+	} else if entry.Unstaged && entry.Staged {
+		// File has both staged and unstaged changes
+		// Add a copy to modified list
+		modEntry := &FileEntry{
+			Path:     entry.Path,
+			Status:   entry.Status,
+			Unstaged: true,
+		}
+		t.Modified = append(t.Modified, modEntry)
+	}
+}
+
+// loadDiffStats loads +/- counts for all files.
+func (t *FileTree) loadDiffStats() error {
+	// Get stats for staged changes
+	if err := t.loadDiffStatsFor(true); err != nil {
+		return err
+	}
+
+	// Get stats for unstaged changes
+	return t.loadDiffStatsFor(false)
+}
+
+// loadDiffStatsFor loads diff stats for staged or unstaged changes.
+func (t *FileTree) loadDiffStatsFor(staged bool) error {
+	args := []string{"diff", "--numstat"}
+	if staged {
+		args = append(args, "--cached")
+	}
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = t.workDir
+	output, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+
+	// Parse numstat output: <additions>\t<deletions>\t<path>
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	re := regexp.MustCompile(`^(\d+|-)\t(\d+|-)\t(.+)$`)
+
+	for scanner.Scan() {
+		matches := re.FindStringSubmatch(scanner.Text())
+		if len(matches) != 4 {
+			continue
+		}
+
+		additions, _ := strconv.Atoi(matches[1])
+		deletions, _ := strconv.Atoi(matches[2])
+		path := matches[3]
+
+		// Handle renamed files (path\told_path)
+		if idx := strings.Index(path, "\t"); idx > 0 {
+			path = path[:idx]
+		}
+
+		// Find and update the entry
+		entries := t.Modified
+		if staged {
+			entries = t.Staged
+		}
+		for _, e := range entries {
+			if e.Path == path || filepath.Base(e.Path) == filepath.Base(path) {
+				e.DiffStats = DiffStats{
+					Additions: additions,
+					Deletions: deletions,
+				}
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+// TotalCount returns the total number of changed files.
+func (t *FileTree) TotalCount() int {
+	return len(t.Staged) + len(t.Modified) + len(t.Untracked)
+}
+
+// Summary returns a summary string like "2 staged, 3 modified".
+func (t *FileTree) Summary() string {
+	var parts []string
+	if len(t.Staged) > 0 {
+		parts = append(parts, strconv.Itoa(len(t.Staged))+" staged")
+	}
+	if len(t.Modified) > 0 {
+		parts = append(parts, strconv.Itoa(len(t.Modified))+" modified")
+	}
+	if len(t.Untracked) > 0 {
+		parts = append(parts, strconv.Itoa(len(t.Untracked))+" untracked")
+	}
+	if len(parts) == 0 {
+		return "clean"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// AllEntries returns all entries in display order.
+func (t *FileTree) AllEntries() []*FileEntry {
+	var all []*FileEntry
+	all = append(all, t.Staged...)
+	all = append(all, t.Modified...)
+	all = append(all, t.Untracked...)
+	return all
+}
+
+// StageFile stages a file.
+func (t *FileTree) StageFile(path string) error {
+	cmd := exec.Command("git", "add", path)
+	cmd.Dir = t.workDir
+	return cmd.Run()
+}
+
+// UnstageFile unstages a file.
+func (t *FileTree) UnstageFile(path string) error {
+	cmd := exec.Command("git", "restore", "--staged", path)
+	cmd.Dir = t.workDir
+	return cmd.Run()
+}
