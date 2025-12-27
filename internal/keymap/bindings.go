@@ -71,6 +71,7 @@ func DefaultBindings() []Binding {
 		{Key: "enter", Command: "view-session", Context: "conversations"},
 		{Key: "/", Command: "search", Context: "conversations"},
 		{Key: "r", Command: "refresh", Context: "conversations"},
+		{Key: "U", Command: "analytics", Context: "conversations"},
 
 		// Conversations search context
 		{Key: "enter", Command: "select", Context: "conversations-search"},

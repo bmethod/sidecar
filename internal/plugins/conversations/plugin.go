@@ -679,7 +679,7 @@ func (p *Plugin) Commands() []plugin.Command {
 	}
 	return []plugin.Command{
 		{ID: "view-session", Name: "View", Description: "View session messages", Category: plugin.CategoryView, Context: "conversations"},
-		{ID: "analytics", Name: "Analytics", Description: "View usage analytics", Category: plugin.CategoryView, Context: "conversations"},
+		{ID: "analytics", Name: "Stats", Description: "View usage analytics", Category: plugin.CategoryView, Context: "conversations"},
 		{ID: "search", Name: "Search", Description: "Search conversations", Category: plugin.CategorySearch, Context: "conversations"},
 		{ID: "filter", Name: "Filter", Description: "Filter by project", Category: plugin.CategorySearch, Context: "conversations"},
 	}
