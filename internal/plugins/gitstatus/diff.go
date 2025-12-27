@@ -111,6 +111,15 @@ func GetNewFileDiff(workDir, path string) (string, error) {
 		return "", err
 	}
 
+	// Detect binary files (contains null bytes or non-printable chars)
+	if isBinaryContent(content) {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", path, path))
+		sb.WriteString("new file mode 100644\n")
+		sb.WriteString(fmt.Sprintf("Binary file %s\n", path))
+		return sb.String(), nil
+	}
+
 	lines := strings.Split(string(content), "\n")
 	lineCount := len(lines)
 
@@ -126,4 +135,22 @@ func GetNewFileDiff(workDir, path string) (string, error) {
 	}
 
 	return strings.TrimSuffix(sb.String(), "\n"), nil
+}
+
+// isBinaryContent checks if content appears to be binary.
+// Returns true if content contains null bytes or a high ratio of non-printable chars.
+func isBinaryContent(content []byte) bool {
+	// Check first 8KB (git uses similar heuristic)
+	checkLen := len(content)
+	if checkLen > 8192 {
+		checkLen = 8192
+	}
+
+	for i := 0; i < checkLen; i++ {
+		// Null byte is strong indicator of binary
+		if content[i] == 0 {
+			return true
+		}
+	}
+	return false
 }

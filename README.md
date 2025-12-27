@@ -4,6 +4,8 @@ Terminal UI for monitoring AI coding agent sessions.
 
 **Status: Alpha** - Functional but expect rough edges and breaking changes.
 
+![Git Status](docs/screenshots/sidecar-git.png)
+
 ## Overview
 
 Sidecar provides a unified terminal interface for viewing Claude Code conversations, git status, and task progress. Built for developers who want visibility into their AI coding sessions without leaving the terminal.
@@ -40,13 +42,54 @@ sidecar --version
 ## Plugins
 
 ### Git Status
-View staged, modified, and untracked files. Stage/unstage with `s`/`u`, view diffs with `d`.
 
-### TD Monitor
-Track tasks from the TD task management system. View in-progress, ready, and reviewable issues.
+View staged, modified, and untracked files with a split-pane interface. The sidebar shows files and recent commits; the main pane shows syntax-highlighted diffs.
+
+![Git Status with Diff](docs/screenshots/sidecar-git.png)
+
+**Features:**
+- Stage/unstage files with `s`/`u`
+- View diffs inline or full-screen with `d`
+- Toggle side-by-side diff view with `v`
+- Browse commit history and view commit diffs
+- Auto-refresh on file system changes
+
+![Side-by-side Diff](docs/screenshots/sidecar-git-diff-side-by-side.png)
 
 ### Conversations
-Browse Claude Code session history with message content and token usage.
+
+Browse Claude Code session history with message content, token usage, and search.
+
+![Conversations](docs/screenshots/sidecar-conversations.png)
+
+**Features:**
+- View all sessions grouped by date
+- Search sessions with `/`
+- Expand messages to see full content
+- Track token usage per session
+
+### TD Monitor
+
+Track tasks from the TD task management system. View current work, task list, and activity log.
+
+![TD Monitor](docs/screenshots/sidecar-td.png)
+
+**Features:**
+- Current focused task display
+- Scrollable task list with status indicators
+- Activity log with session context
+- Quick review submission with `r`
+
+### File Browser
+
+Navigate project files with a tree view and syntax-highlighted preview.
+
+![File Browser](docs/screenshots/sidecar-file-browser.png)
+
+**Features:**
+- Collapsible directory tree
+- Code preview with syntax highlighting
+- Auto-refresh on file changes
 
 ## Keyboard Shortcuts
 
@@ -56,10 +99,23 @@ Browse Claude Code session history with message content and token usage.
 | `tab` / `shift+tab` | Navigate plugins |
 | `1-9` | Focus plugin by number |
 | `j/k`, `↓/↑` | Navigate items |
+| `ctrl+d/u` | Page down/up in scrollable views |
+| `g/G` | Jump to top/bottom |
 | `enter` | Select |
 | `esc` | Back/close |
 | `r` | Refresh |
 | `?` | Toggle help |
+
+### Git Status Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `s` | Stage file |
+| `u` | Unstage file |
+| `d` | View diff (full-screen) |
+| `v` | Toggle side-by-side diff |
+| `h/l` | Switch sidebar/diff focus |
+| `c` | Commit staged changes |
 
 ## Configuration
 
@@ -70,7 +126,8 @@ Config file: `~/.config/sidecar/config.json`
   "plugins": {
     "git-status": { "enabled": true, "refreshInterval": "1s" },
     "td-monitor": { "enabled": true, "refreshInterval": "2s" },
-    "conversations": { "enabled": true }
+    "conversations": { "enabled": true },
+    "file-browser": { "enabled": true }
   },
   "ui": {
     "showFooter": true,
