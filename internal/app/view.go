@@ -89,7 +89,7 @@ func (m Model) renderHeader() string {
 			tabs = append(tabs, styles.TabInactive.Render(label))
 		}
 	}
-	tabBar := strings.Join(tabs, "")
+	tabBar := strings.Join(tabs, " ")
 
 	// Clock
 	clock := styles.BarText.Render(m.ui.Clock.Format("15:04"))

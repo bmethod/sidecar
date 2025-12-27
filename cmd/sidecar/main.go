@@ -90,9 +90,9 @@ func main() {
 	// Create plugin registry
 	registry := plugin.NewRegistry(pluginCtx)
 
-	// Register plugins
-	registry.Register(gitstatus.New())
+	// Register plugins (order determines tab order)
 	registry.Register(tdmonitor.New())
+	registry.Register(gitstatus.New())
 	registry.Register(conversations.New())
 	registry.Register(filebrowser.New())
 

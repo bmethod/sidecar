@@ -13,7 +13,7 @@ import (
 
 const (
 	pluginID   = "td-monitor"
-	pluginName = "td monitor"
+	pluginName = "td"
 	pluginIcon = "T"
 
 	pollInterval = 2 * time.Second

@@ -27,8 +27,8 @@ func TestPluginID(t *testing.T) {
 
 func TestPluginName(t *testing.T) {
 	p := New()
-	if name := p.Name(); name != "Conversations" {
-		t.Errorf("expected Name 'Conversations', got %q", name)
+	if name := p.Name(); name != "conversations" {
+		t.Errorf("expected Name 'conversations', got %q", name)
 	}
 }
 

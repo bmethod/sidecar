@@ -13,7 +13,7 @@ import (
 
 const (
 	pluginID   = "conversations"
-	pluginName = "Conversations"
+	pluginName = "conversations"
 	pluginIcon = "C"
 
 	// Default page size for messages
