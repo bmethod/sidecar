@@ -59,6 +59,9 @@ func (m Model) View() string {
 	}
 
 	// Overlay modals
+	if m.showPalette {
+		return m.renderPaletteOverlay(b.String())
+	}
 	if m.showHelp {
 		return m.renderHelpOverlay(b.String())
 	}
@@ -67,6 +70,19 @@ func (m Model) View() string {
 	}
 
 	return b.String()
+}
+
+// renderPaletteOverlay renders the command palette modal.
+func (m Model) renderPaletteOverlay(content string) string {
+	modal := m.palette.View()
+
+	return lipgloss.Place(
+		m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		modal,
+		lipgloss.WithWhitespaceChars(" "),
+		lipgloss.WithWhitespaceForeground(lipgloss.Color("#000000")),
+	)
 }
 
 // renderHeader renders the top bar with title, tabs, and clock.

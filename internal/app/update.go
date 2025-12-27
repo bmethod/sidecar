@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/sst/sidecar/internal/palette"
 	"github.com/sst/sidecar/internal/plugins/filebrowser"
 )
 
@@ -68,6 +69,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return RefreshMsg{}
 		})
+
+	case palette.CommandSelectedMsg:
+		// Execute the selected command from the palette
+		m.showPalette = false
+		m.updateContext()
+		// Dispatch the command via keymap registry
+		// For now, just close the palette - command execution will be added
+		return m, nil
 	}
 
 	// Forward other messages to ALL plugins (not just active)
@@ -114,10 +123,23 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global quit - always takes precedence
 	switch msg.String() {
 	case "ctrl+c", "q":
-		if !m.showHelp && !m.showDiagnostics {
+		if !m.showHelp && !m.showDiagnostics && !m.showPalette {
 			m.registry.Stop()
 			return m, tea.Quit
 		}
+	}
+
+	// Handle palette input when open
+	if m.showPalette {
+		if msg.Type == tea.KeyEsc {
+			m.showPalette = false
+			m.updateContext()
+			return m, nil
+		}
+		// Forward to palette
+		var cmd tea.Cmd
+		m.palette, cmd = m.palette.Update(msg)
+		return m, cmd
 	}
 
 	// Close modals with escape
@@ -172,9 +194,16 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Toggles
 	switch msg.String() {
 	case "?":
-		m.showHelp = !m.showHelp
-		if m.showHelp {
-			m.activeContext = "help"
+		m.showPalette = !m.showPalette
+		if m.showPalette {
+			// Open palette with current context
+			pluginCtx := "global"
+			if p := m.ActivePlugin(); p != nil {
+				pluginCtx = p.ID()
+			}
+			m.palette.SetSize(m.width, m.height)
+			m.palette.Open(m.keymap, m.registry.Plugins(), m.activeContext, pluginCtx)
+			m.activeContext = "palette"
 		} else {
 			m.updateContext()
 		}

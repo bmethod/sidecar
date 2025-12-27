@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sst/sidecar/internal/keymap"
+	"github.com/sst/sidecar/internal/palette"
 	"github.com/sst/sidecar/internal/plugin"
 )
 
@@ -23,6 +24,8 @@ type Model struct {
 	showHelp        bool
 	showDiagnostics bool
 	showFooter      bool
+	showPalette     bool
+	palette         palette.Model
 
 	// Header/footer
 	ui *UIState
@@ -49,6 +52,7 @@ func New(reg *plugin.Registry, km *keymap.Registry) Model {
 		activePlugin:  0,
 		activeContext: "global",
 		showFooter:    true,
+		palette:       palette.New(),
 		ui:            NewUIState(),
 		ready:         false,
 		intro:         NewIntroModel(),

@@ -18,12 +18,27 @@ type Plugin interface {
 	FocusContext() string
 }
 
+// Category represents a logical grouping of commands for the command palette.
+type Category string
+
+const (
+	CategoryNavigation Category = "Navigation"
+	CategoryActions    Category = "Actions"
+	CategoryView       Category = "View"
+	CategorySearch     Category = "Search"
+	CategoryEdit       Category = "Edit"
+	CategoryGit        Category = "Git"
+	CategorySystem     Category = "System"
+)
+
 // Command represents a keybinding command exposed by a plugin.
 type Command struct {
-	ID      string
-	Name    string
-	Handler func() tea.Cmd
-	Context string
+	ID          string         // Unique identifier (e.g., "stage-file")
+	Name        string         // Short name for footer (e.g., "Stage")
+	Description string         // Full description for palette
+	Category    Category       // Logical grouping for palette display
+	Handler     func() tea.Cmd // Action to execute (optional)
+	Context     string         // Activation context
 }
 
 // DiagnosticProvider is implemented by plugins that expose diagnostics.
