@@ -1,9 +1,11 @@
 package filebrowser
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -413,5 +415,275 @@ func TestSearch_PrintableCharacterFilter(t *testing.T) {
 	_, _ = p.handleSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	if p.searchQuery != "a" {
 		t.Error("printable character should be added to query")
+	}
+}
+
+// --- Content Search Tests ---
+
+func createTestPluginWithPreview(t *testing.T, tmpDir string, fileContent string) *Plugin {
+	p := createTestPlugin(t, tmpDir)
+
+	// Set up preview with content
+	p.previewFile = "test.txt"
+	p.previewLines = strings.Split(fileContent, "\n")
+	p.previewHighlighted = p.previewLines // No syntax highlighting for test
+	p.activePane = PanePreview
+	p.height = 24
+	p.width = 80
+
+	return p
+}
+
+func TestContentSearch_EnterMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "line one\nline two\nline three")
+
+	if p.contentSearchMode {
+		t.Error("contentSearchMode should be false initially")
+	}
+
+	// Press "/" in preview pane
+	_, _ = p.handlePreviewKey("/")
+
+	if !p.contentSearchMode {
+		t.Error("contentSearchMode should be true after '/' in preview")
+	}
+	if p.contentSearchQuery != "" {
+		t.Error("contentSearchQuery should be empty when entering search mode")
+	}
+}
+
+func TestContentSearch_EnterModeDisabledForBinary(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "some content")
+	p.isBinary = true
+
+	_, _ = p.handlePreviewKey("/")
+
+	if p.contentSearchMode {
+		t.Error("contentSearchMode should not activate for binary files")
+	}
+}
+
+func TestContentSearch_EnterModeDisabledForEmptyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "")
+	p.previewLines = nil
+
+	_, _ = p.handlePreviewKey("/")
+
+	if p.contentSearchMode {
+		t.Error("contentSearchMode should not activate for empty files")
+	}
+}
+
+func TestContentSearch_ExitWithEsc(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "test content")
+	p.contentSearchMode = true
+	p.contentSearchQuery = "test"
+	p.contentSearchMatches = []ContentMatch{{LineNo: 0, StartCol: 0, EndCol: 4}}
+
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyEscape})
+
+	if p.contentSearchMode {
+		t.Error("contentSearchMode should be false after escape")
+	}
+	if p.contentSearchQuery != "" {
+		t.Error("contentSearchQuery should be cleared after escape")
+	}
+	if len(p.contentSearchMatches) != 0 {
+		t.Error("contentSearchMatches should be cleared after escape")
+	}
+}
+
+func TestContentSearch_ExitWithEnter(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "test content")
+	p.contentSearchMode = true
+	p.contentSearchQuery = "test"
+	p.contentSearchMatches = []ContentMatch{{LineNo: 0, StartCol: 0, EndCol: 4}}
+
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if p.contentSearchMode {
+		t.Error("contentSearchMode should be false after enter")
+	}
+	// Query and matches should be preserved (unlike esc)
+}
+
+func TestContentSearch_FindMatches(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "foo bar foo\nbaz foo\nno match here")
+	p.contentSearchMode = true
+	p.contentSearchQuery = "foo"
+	p.updateContentMatches()
+
+	if len(p.contentSearchMatches) != 3 {
+		t.Errorf("expected 3 matches, got %d", len(p.contentSearchMatches))
+	}
+
+	// Check first match
+	if p.contentSearchMatches[0].LineNo != 0 || p.contentSearchMatches[0].StartCol != 0 {
+		t.Errorf("first match wrong: %+v", p.contentSearchMatches[0])
+	}
+	// Check second match (second "foo" on line 0)
+	if p.contentSearchMatches[1].LineNo != 0 || p.contentSearchMatches[1].StartCol != 8 {
+		t.Errorf("second match wrong: %+v", p.contentSearchMatches[1])
+	}
+	// Check third match (on line 1)
+	if p.contentSearchMatches[2].LineNo != 1 || p.contentSearchMatches[2].StartCol != 4 {
+		t.Errorf("third match wrong: %+v", p.contentSearchMatches[2])
+	}
+}
+
+func TestContentSearch_CaseInsensitive(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "FOO foo Foo")
+	p.contentSearchMode = true
+	p.contentSearchQuery = "foo"
+	p.updateContentMatches()
+
+	if len(p.contentSearchMatches) != 3 {
+		t.Errorf("case-insensitive search should find 3 matches, got %d", len(p.contentSearchMatches))
+	}
+}
+
+func TestContentSearch_NavigateNext(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "a\na\na")
+	p.contentSearchMode = true
+	p.contentSearchQuery = "a"
+	p.updateContentMatches()
+
+	if len(p.contentSearchMatches) != 3 {
+		t.Fatalf("expected 3 matches, got %d", len(p.contentSearchMatches))
+	}
+
+	if p.contentSearchCursor != 0 {
+		t.Error("cursor should start at 0")
+	}
+
+	// Press n
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if p.contentSearchCursor != 1 {
+		t.Errorf("cursor should be 1 after n, got %d", p.contentSearchCursor)
+	}
+
+	// Press n again
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if p.contentSearchCursor != 2 {
+		t.Errorf("cursor should be 2 after n, got %d", p.contentSearchCursor)
+	}
+
+	// Press n - should wrap to 0
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if p.contentSearchCursor != 0 {
+		t.Errorf("cursor should wrap to 0, got %d", p.contentSearchCursor)
+	}
+}
+
+func TestContentSearch_NavigatePrev(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "a\na\na")
+	p.contentSearchMode = true
+	p.contentSearchQuery = "a"
+	p.updateContentMatches()
+
+	// Press N at position 0 - should wrap to last
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
+	if p.contentSearchCursor != 2 {
+		t.Errorf("cursor should wrap to 2, got %d", p.contentSearchCursor)
+	}
+
+	// Press N again
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
+	if p.contentSearchCursor != 1 {
+		t.Errorf("cursor should be 1, got %d", p.contentSearchCursor)
+	}
+}
+
+func TestContentSearch_Backspace(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "test")
+	p.contentSearchMode = true
+	p.contentSearchQuery = "tes"
+
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyBackspace})
+
+	if p.contentSearchQuery != "te" {
+		t.Errorf("query should be 'te', got %q", p.contentSearchQuery)
+	}
+}
+
+func TestContentSearch_TypeCharacters(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "hello world")
+	p.contentSearchMode = true
+
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	_, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	if p.contentSearchQuery != "he" {
+		t.Errorf("query should be 'he', got %q", p.contentSearchQuery)
+	}
+
+	if len(p.contentSearchMatches) != 1 {
+		t.Errorf("should have 1 match for 'he', got %d", len(p.contentSearchMatches))
+	}
+}
+
+func TestContentSearch_ScrollToMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Create content with 50 lines, match on line 40
+	var lines []string
+	for i := 0; i < 50; i++ {
+		if i == 40 {
+			lines = append(lines, "TARGET here")
+		} else {
+			lines = append(lines, fmt.Sprintf("line %d", i))
+		}
+	}
+	p := createTestPluginWithPreview(t, tmpDir, strings.Join(lines, "\n"))
+	p.contentSearchMode = true
+	p.contentSearchQuery = "TARGET"
+	p.updateContentMatches()
+
+	if len(p.contentSearchMatches) != 1 {
+		t.Fatalf("expected 1 match, got %d", len(p.contentSearchMatches))
+	}
+
+	// Scroll should have moved to show the match
+	if p.previewScroll == 0 {
+		t.Error("previewScroll should have changed to show match on line 40")
+	}
+}
+
+func TestContentSearch_EmptyQuery(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "test content")
+	p.contentSearchMode = true
+	p.contentSearchQuery = ""
+	p.updateContentMatches()
+
+	if len(p.contentSearchMatches) != 0 {
+		t.Error("empty query should have no matches")
+	}
+}
+
+func TestContentSearch_FocusContext(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPluginWithPreview(t, tmpDir, "test")
+
+	// Preview pane focused, no search
+	p.activePane = PanePreview
+	if p.FocusContext() != "file-browser-preview" {
+		t.Errorf("expected file-browser-preview, got %s", p.FocusContext())
+	}
+
+	// Content search active
+	p.contentSearchMode = true
+	if p.FocusContext() != "file-browser-content-search" {
+		t.Errorf("expected file-browser-content-search, got %s", p.FocusContext())
 	}
 }

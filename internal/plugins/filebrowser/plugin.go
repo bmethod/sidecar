@@ -28,6 +28,13 @@ type (
 	}
 )
 
+// ContentMatch represents a match position within file content.
+type ContentMatch struct {
+	LineNo   int // 0-indexed line number
+	StartCol int // Start column (byte offset)
+	EndCol   int // End column (byte offset)
+}
+
 // Plugin implements file browser functionality.
 type Plugin struct {
 	ctx     *plugin.Context
@@ -55,11 +62,17 @@ type Plugin struct {
 	treeWidth     int
 	previewWidth  int
 
-	// Search state
+	// Search state (tree filename search)
 	searchMode    bool
 	searchQuery   string
 	searchMatches []*FileNode
 	searchCursor  int
+
+	// Content search state (preview pane)
+	contentSearchMode    bool
+	contentSearchQuery   string
+	contentSearchMatches []ContentMatch
+	contentSearchCursor  int // Index into contentSearchMatches
 
 	// File watcher
 	watcher *Watcher
@@ -193,7 +206,12 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 func (p *Plugin) handleKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	key := msg.String()
 
-	// Handle search mode input
+	// Handle content search mode input (preview pane search)
+	if p.contentSearchMode {
+		return p.handleContentSearchKey(msg)
+	}
+
+	// Handle tree search mode input
 	if p.searchMode {
 		return p.handleSearchKey(msg)
 	}
@@ -408,16 +426,136 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 		if p.previewFile != "" {
 			return p, p.openFile(p.previewFile)
 		}
+
+	case "/":
+		// Enter content search mode if we have content to search
+		if len(p.previewLines) > 0 && !p.isBinary {
+			p.contentSearchMode = true
+			p.contentSearchQuery = ""
+			p.contentSearchMatches = nil
+			p.contentSearchCursor = 0
+		}
 	}
 
 	return p, nil
+}
+
+// handleContentSearchKey handles key input during content search mode.
+func (p *Plugin) handleContentSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "esc":
+		// Exit search, clear matches
+		p.contentSearchMode = false
+		p.contentSearchQuery = ""
+		p.contentSearchMatches = nil
+		p.contentSearchCursor = 0
+
+	case "enter":
+		// Exit search, keep position at current match
+		p.contentSearchMode = false
+
+	case "backspace":
+		if len(p.contentSearchQuery) > 0 {
+			p.contentSearchQuery = p.contentSearchQuery[:len(p.contentSearchQuery)-1]
+			p.updateContentMatches()
+		}
+
+	case "n":
+		// Next match (wrap around)
+		if len(p.contentSearchMatches) > 0 {
+			p.contentSearchCursor = (p.contentSearchCursor + 1) % len(p.contentSearchMatches)
+			p.scrollToContentMatch()
+		}
+
+	case "N":
+		// Previous match (wrap around)
+		if len(p.contentSearchMatches) > 0 {
+			p.contentSearchCursor--
+			if p.contentSearchCursor < 0 {
+				p.contentSearchCursor = len(p.contentSearchMatches) - 1
+			}
+			p.scrollToContentMatch()
+		}
+
+	default:
+		// Append printable characters
+		if len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
+			p.contentSearchQuery += key
+			p.updateContentMatches()
+		}
+	}
+
+	return p, nil
+}
+
+// updateContentMatches finds all matches of the search query in preview content.
+func (p *Plugin) updateContentMatches() {
+	p.contentSearchMatches = nil
+	p.contentSearchCursor = 0
+
+	if p.contentSearchQuery == "" {
+		return
+	}
+
+	query := strings.ToLower(p.contentSearchQuery)
+
+	for lineNo, line := range p.previewLines {
+		lineLower := strings.ToLower(line)
+		startIdx := 0
+		for {
+			idx := strings.Index(lineLower[startIdx:], query)
+			if idx == -1 {
+				break
+			}
+			absIdx := startIdx + idx
+			p.contentSearchMatches = append(p.contentSearchMatches, ContentMatch{
+				LineNo:   lineNo,
+				StartCol: absIdx,
+				EndCol:   absIdx + len(p.contentSearchQuery),
+			})
+			startIdx = absIdx + 1
+		}
+	}
+
+	// Scroll to first match if any
+	if len(p.contentSearchMatches) > 0 {
+		p.scrollToContentMatch()
+	}
+}
+
+// scrollToContentMatch scrolls the preview to show the current match.
+func (p *Plugin) scrollToContentMatch() {
+	if len(p.contentSearchMatches) == 0 || p.contentSearchCursor >= len(p.contentSearchMatches) {
+		return
+	}
+
+	match := p.contentSearchMatches[p.contentSearchCursor]
+	visibleHeight := p.visibleContentHeight()
+
+	// Center the match line in viewport if possible
+	targetScroll := match.LineNo - visibleHeight/2
+	if targetScroll < 0 {
+		targetScroll = 0
+	}
+
+	maxScroll := len(p.previewLines) - visibleHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if targetScroll > maxScroll {
+		targetScroll = maxScroll
+	}
+
+	p.previewScroll = targetScroll
 }
 
 // visibleContentHeight returns the number of lines available for content.
 func (p *Plugin) visibleContentHeight() int {
 	// height - footer (1) - search bar (0 or 1) - pane border (2) - header (2)
 	searchBar := 0
-	if p.searchMode {
+	if p.searchMode || p.contentSearchMode {
 		searchBar = 1
 	}
 	h := p.height - 1 - searchBar - 2 - 2
@@ -581,16 +719,32 @@ func (p *Plugin) SetFocused(f bool) { p.focused = f }
 // Commands returns the available commands.
 func (p *Plugin) Commands() []plugin.Command {
 	return []plugin.Command{
+		// Tree pane commands
+		{ID: "search", Name: "Search", Context: "file-browser-tree"},
 		{ID: "refresh", Name: "Refresh", Context: "file-browser-tree"},
-		{ID: "expand", Name: "Expand/Select", Context: "file-browser-tree"},
-		{ID: "collapse", Name: "Collapse/Parent", Context: "file-browser-tree"},
-		{ID: "toggle-pane", Name: "Toggle Pane", Context: "file-browser-tree"},
-		{ID: "toggle-pane", Name: "Toggle Pane", Context: "file-browser-preview"},
+		{ID: "expand", Name: "Open", Context: "file-browser-tree"},
+		{ID: "collapse", Name: "Back", Context: "file-browser-tree"},
+		// Preview pane commands
+		{ID: "search-content", Name: "Search", Context: "file-browser-preview"},
+		{ID: "back", Name: "Back", Context: "file-browser-preview"},
+		// Tree search commands
+		{ID: "confirm", Name: "Go", Context: "file-browser-search"},
+		{ID: "cancel", Name: "Cancel", Context: "file-browser-search"},
+		{ID: "next-match", Name: "Next", Context: "file-browser-search"},
+		{ID: "prev-match", Name: "Prev", Context: "file-browser-search"},
+		// Content search commands
+		{ID: "confirm", Name: "Go", Context: "file-browser-content-search"},
+		{ID: "cancel", Name: "Cancel", Context: "file-browser-content-search"},
+		{ID: "next-match", Name: "Next", Context: "file-browser-content-search"},
+		{ID: "prev-match", Name: "Prev", Context: "file-browser-content-search"},
 	}
 }
 
 // FocusContext returns the current focus context.
 func (p *Plugin) FocusContext() string {
+	if p.contentSearchMode {
+		return "file-browser-content-search"
+	}
 	if p.searchMode {
 		return "file-browser-search"
 	}

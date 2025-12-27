@@ -82,6 +82,26 @@ func DefaultBindings() []Binding {
 		{Key: "g", Command: "cursor-top", Context: "conversation-detail"},
 		{Key: "G", Command: "cursor-bottom", Context: "conversation-detail"},
 
+		// File browser tree context
+		{Key: "/", Command: "search", Context: "file-browser-tree"},
+
+		// File browser preview context
+		{Key: "/", Command: "search-content", Context: "file-browser-preview"},
+		{Key: "esc", Command: "back", Context: "file-browser-preview"},
+		{Key: "h", Command: "back", Context: "file-browser-preview"},
+
+		// File browser tree search context
+		{Key: "esc", Command: "cancel", Context: "file-browser-search"},
+		{Key: "enter", Command: "confirm", Context: "file-browser-search"},
+		{Key: "n", Command: "next-match", Context: "file-browser-search"},
+		{Key: "N", Command: "prev-match", Context: "file-browser-search"},
+
+		// File browser content search context
+		{Key: "esc", Command: "cancel", Context: "file-browser-content-search"},
+		{Key: "enter", Command: "confirm", Context: "file-browser-content-search"},
+		{Key: "n", Command: "next-match", Context: "file-browser-content-search"},
+		{Key: "N", Command: "prev-match", Context: "file-browser-content-search"},
+
 		// Git Commit context (commit message editor)
 		{Key: "esc", Command: "cancel", Context: "git-commit"},
 		{Key: "alt+enter", Command: "execute-commit", Context: "git-commit"},

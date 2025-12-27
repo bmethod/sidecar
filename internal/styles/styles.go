@@ -80,9 +80,9 @@ var (
 		Foreground(Accent)
 
 	KeyHint = lipgloss.NewStyle().
-			Foreground(TextMuted).
-			Background(BgTertiary).
-			Padding(0, 1)
+		Foreground(TextMuted).
+		Background(BgTertiary).
+		Padding(0, 1)
 )
 
 // Status indicator styles
@@ -144,9 +144,9 @@ var (
 		Foreground(TextMuted)
 
 	BarChip = lipgloss.NewStyle().
-			Foreground(TextMuted).
-			Background(BgTertiary).
-			Padding(0, 1)
+		Foreground(TextMuted).
+		Background(BgTertiary).
+		Padding(0, 1)
 
 	BarChipActive = lipgloss.NewStyle().
 			Foreground(TextPrimary).
@@ -202,6 +202,14 @@ var (
 	// Tree icons (>, +)
 	FileBrowserIcon = lipgloss.NewStyle().
 			Foreground(TextMuted)
+
+	// Content search match highlighting
+	SearchMatch = lipgloss.NewStyle().
+			Background(Warning) // Yellow background for all matches
+
+	SearchMatchCurrent = lipgloss.NewStyle().
+				Background(Primary). // Purple background for current match
+				Foreground(TextPrimary)
 )
 
 // Footer and header

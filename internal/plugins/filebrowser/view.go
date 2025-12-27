@@ -37,15 +37,15 @@ func (p *Plugin) renderView() string {
 	// Determine border styles based on focus
 	treeBorder := styles.PanelInactive
 	previewBorder := styles.PanelInactive
-	if p.activePane == PaneTree && !p.searchMode {
+	if p.activePane == PaneTree && !p.searchMode && !p.contentSearchMode {
 		treeBorder = styles.PanelActive
-	} else if p.activePane == PanePreview && !p.searchMode {
+	} else if p.activePane == PanePreview && !p.searchMode && !p.contentSearchMode {
 		previewBorder = styles.PanelActive
 	}
 
 	// Account for search bar if active
 	searchBarHeight := 0
-	if p.searchMode {
+	if p.searchMode || p.contentSearchMode {
 		searchBarHeight = 1
 	}
 
@@ -82,14 +82,33 @@ func (p *Plugin) renderView() string {
 	// Build final layout
 	var parts []string
 
-	// Add search bar if in search mode
+	// Add search bar if in tree search mode
 	if p.searchMode {
 		parts = append(parts, p.renderSearchBar())
+	}
+
+	// Add content search bar if in content search mode
+	if p.contentSearchMode {
+		parts = append(parts, p.renderContentSearchBar())
 	}
 
 	parts = append(parts, panes)
 
 	return lipgloss.JoinVertical(lipgloss.Top, parts...)
+}
+
+// renderContentSearchBar renders the content search input bar for preview pane.
+func (p *Plugin) renderContentSearchBar() string {
+	cursor := "█"
+	matchInfo := ""
+	if len(p.contentSearchMatches) > 0 {
+		matchInfo = fmt.Sprintf(" (%d/%d)", p.contentSearchCursor+1, len(p.contentSearchMatches))
+	} else if p.contentSearchQuery != "" {
+		matchInfo = " (0 matches)"
+	}
+
+	searchLine := fmt.Sprintf(" / %s%s%s", p.contentSearchQuery, cursor, matchInfo)
+	return styles.ModalTitle.Render(searchLine)
 }
 
 // renderSearchBar renders the search input bar.
@@ -248,7 +267,17 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 
 	for i := start; i < contentEnd; i++ {
 		lineNum := styles.FileBrowserLineNumber.Render(fmt.Sprintf("%4d ", i+1))
-		line := lineStyle.Render(lines[i]) // Truncates while preserving ANSI codes
+
+		// Get line content - apply match highlighting if in content search mode
+		var lineContent string
+		if p.contentSearchMode && len(p.contentSearchMatches) > 0 {
+			// Use raw lines for highlighting (loses syntax highlighting on matched lines)
+			lineContent = p.highlightLineMatches(i)
+		} else if i < len(lines) {
+			lineContent = lines[i]
+		}
+
+		line := lineStyle.Render(lineContent)
 
 		sb.WriteString(lineNum)
 		sb.WriteString(line)
@@ -263,6 +292,75 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 	}
 
 	return sb.String()
+}
+
+// highlightLineMatches applies search match highlighting to a line.
+func (p *Plugin) highlightLineMatches(lineNo int) string {
+	// Get raw line (not syntax highlighted)
+	if lineNo >= len(p.previewLines) {
+		return ""
+	}
+	rawLine := p.previewLines[lineNo]
+
+	// Find all matches on this line
+	type lineMatch struct {
+		matchIdx int // Index in contentSearchMatches (for current detection)
+		startCol int
+		endCol   int
+	}
+	var lineMatches []lineMatch
+
+	for i, m := range p.contentSearchMatches {
+		if m.LineNo == lineNo {
+			lineMatches = append(lineMatches, lineMatch{
+				matchIdx: i,
+				startCol: m.StartCol,
+				endCol:   m.EndCol,
+			})
+		}
+	}
+
+	if len(lineMatches) == 0 {
+		// No matches on this line, use syntax highlighted version if available
+		if lineNo < len(p.previewHighlighted) {
+			return p.previewHighlighted[lineNo]
+		}
+		return rawLine
+	}
+
+	// Build highlighted line from raw text
+	var result strings.Builder
+	lastEnd := 0
+
+	for _, m := range lineMatches {
+		if m.startCol > len(rawLine) || m.endCol > len(rawLine) {
+			continue
+		}
+		if m.startCol < lastEnd {
+			continue // Overlapping match, skip
+		}
+
+		// Add text before match
+		if m.startCol > lastEnd {
+			result.WriteString(rawLine[lastEnd:m.startCol])
+		}
+
+		// Apply highlight style (current match vs other matches)
+		matchText := rawLine[m.startCol:m.endCol]
+		if m.matchIdx == p.contentSearchCursor {
+			result.WriteString(styles.SearchMatchCurrent.Render(matchText))
+		} else {
+			result.WriteString(styles.SearchMatch.Render(matchText))
+		}
+		lastEnd = m.endCol
+	}
+
+	// Add remaining text
+	if lastEnd < len(rawLine) {
+		result.WriteString(rawLine[lastEnd:])
+	}
+
+	return result.String()
 }
 
 // truncatePath shortens a path to fit width.
