@@ -524,12 +524,13 @@ func TestUpdateMessagesLoadedMsg(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
 	p.pageSize = 2
+	p.selectedSession = "s1"
 
 	// Test with fewer messages than page size
 	messages := []adapter.Message{
 		{Role: "user", Content: "Hello"},
 	}
-	msg := MessagesLoadedMsg{Messages: messages}
+	msg := MessagesLoadedMsg{SessionID: "s1", Messages: messages}
 	_, _ = p.Update(msg)
 
 	if len(p.messages) != 1 {
@@ -544,7 +545,7 @@ func TestUpdateMessagesLoadedMsg(t *testing.T) {
 		{Role: "user", Content: "Hello"},
 		{Role: "assistant", Content: "Hi"},
 	}
-	msg = MessagesLoadedMsg{Messages: messages}
+	msg = MessagesLoadedMsg{SessionID: "s1", Messages: messages}
 	_, _ = p.Update(msg)
 
 	if len(p.messages) != 2 {

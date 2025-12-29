@@ -20,6 +20,8 @@ const (
 	// Default page size for messages
 	defaultPageSize     = 50
 	maxMessagesInMemory = 500
+
+	previewDebounce = 150 * time.Millisecond
 )
 
 // View represents the current view mode.
@@ -56,6 +58,7 @@ type Plugin struct {
 
 	// Message view state
 	selectedSession  string
+	loadedSession    string // sessionID that p.messages currently represent
 	messages         []adapter.Message
 	turns            []Turn // messages grouped into turns
 	turnCursor       int    // cursor for turn selection in list view
@@ -80,6 +83,7 @@ type Plugin struct {
 	twoPane      bool      // Enable when width >= 120
 	activePane   FocusPane // Which pane is focused
 	sidebarWidth int       // Calculated width (~30%)
+	previewToken int       // monotonically increasing token for debounced preview loads
 
 	// View dimensions
 	width  int
@@ -177,9 +181,58 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case SessionsLoadedMsg:
 		p.sessions = msg.Sessions
+		// Keep selection valid when sessions refresh.
+		if p.selectedSession != "" {
+			found := false
+			for i := range p.sessions {
+				if p.sessions[i].ID == p.selectedSession {
+					found = true
+					break
+				}
+			}
+			if !found {
+				p.selectedSession = ""
+				p.loadedSession = ""
+				p.messages = nil
+				p.turns = nil
+				p.sessionSummary = nil
+			}
+		}
+
+		// In two-pane mode, ensure a selection so the right pane can render.
+		if p.twoPane && p.selectedSession == "" && len(p.sessions) > 0 {
+			if p.cursor >= len(p.sessions) {
+				p.cursor = len(p.sessions) - 1
+			}
+			if p.cursor < 0 {
+				p.cursor = 0
+			}
+			p.setSelectedSession(p.sessions[p.cursor].ID)
+			return p, p.schedulePreviewLoad(p.selectedSession)
+		}
 		return p, nil
 
+	case PreviewLoadMsg:
+		if msg.Token != p.previewToken {
+			return p, nil
+		}
+		if msg.SessionID == "" || msg.SessionID != p.selectedSession {
+			return p, nil
+		}
+		if p.loadedSession == msg.SessionID && len(p.messages) > 0 {
+			return p, nil
+		}
+		return p, tea.Batch(
+			p.loadMessages(msg.SessionID),
+			p.loadUsage(msg.SessionID),
+		)
+
 	case MessagesLoadedMsg:
+		if msg.SessionID == "" || msg.SessionID != p.selectedSession {
+			// Ignore out-of-order loads when cursor moves quickly.
+			return p, nil
+		}
+		p.loadedSession = msg.SessionID
 		p.messages = msg.Messages
 		p.turns = GroupMessagesIntoTurns(msg.Messages)
 		p.turnCursor = 0
@@ -213,11 +266,52 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		)
 
 	case tea.WindowSizeMsg:
+		prevTwoPane := p.twoPane
 		p.width = msg.Width
 		p.height = msg.Height
+		p.twoPane = msg.Width >= 120
+		if p.twoPane && (!prevTwoPane || p.selectedSession == "") && len(p.sessions) > 0 {
+			if p.cursor >= len(p.sessions) {
+				p.cursor = len(p.sessions) - 1
+			}
+			if p.cursor < 0 {
+				p.cursor = 0
+			}
+			p.setSelectedSession(p.sessions[p.cursor].ID)
+			return p, p.schedulePreviewLoad(p.selectedSession)
+		}
+		return p, nil
 	}
 
 	return p, nil
+}
+
+func (p *Plugin) setSelectedSession(sessionID string) {
+	if sessionID == "" || sessionID == p.selectedSession {
+		return
+	}
+	p.selectedSession = sessionID
+	p.loadedSession = ""
+	p.messages = nil
+	p.turns = nil
+	p.turnCursor = 0
+	p.turnScrollOff = 0
+	p.sessionSummary = nil
+	p.showToolSummary = false
+	p.detailTurn = nil
+	p.detailScroll = 0
+	p.expandedThinking = make(map[string]bool)
+}
+
+func (p *Plugin) schedulePreviewLoad(sessionID string) tea.Cmd {
+	if sessionID == "" {
+		return nil
+	}
+	p.previewToken++
+	token := p.previewToken
+	return tea.Tick(previewDebounce, func(time.Time) tea.Msg {
+		return PreviewLoadMsg{Token: token, SessionID: sessionID}
+	})
 }
 
 // updateSessions handles key events in session list view.
@@ -241,11 +335,8 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.ensureCursorVisible()
 			// In two-pane mode, auto-load messages when cursor moves
 			if p.twoPane && p.cursor < len(sessions) {
-				p.selectedSession = sessions[p.cursor].ID
-				return p, tea.Batch(
-					p.loadMessages(p.selectedSession),
-					p.loadUsage(p.selectedSession),
-				)
+				p.setSelectedSession(sessions[p.cursor].ID)
+				return p, p.schedulePreviewLoad(p.selectedSession)
 			}
 		}
 
@@ -255,11 +346,8 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.ensureCursorVisible()
 			// In two-pane mode, auto-load messages when cursor moves
 			if p.twoPane && p.cursor < len(sessions) {
-				p.selectedSession = sessions[p.cursor].ID
-				return p, tea.Batch(
-					p.loadMessages(p.selectedSession),
-					p.loadUsage(p.selectedSession),
-				)
+				p.setSelectedSession(sessions[p.cursor].ID)
+				return p, p.schedulePreviewLoad(p.selectedSession)
 			}
 		}
 
@@ -268,11 +356,8 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.scrollOff = 0
 		// In two-pane mode, auto-load messages when jumping
 		if p.twoPane && len(sessions) > 0 {
-			p.selectedSession = sessions[0].ID
-			return p, tea.Batch(
-				p.loadMessages(p.selectedSession),
-				p.loadUsage(p.selectedSession),
-			)
+			p.setSelectedSession(sessions[0].ID)
+			return p, p.schedulePreviewLoad(p.selectedSession)
 		}
 
 	case "G":
@@ -281,11 +366,8 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.ensureCursorVisible()
 			// In two-pane mode, auto-load messages when jumping
 			if p.twoPane {
-				p.selectedSession = sessions[p.cursor].ID
-				return p, tea.Batch(
-					p.loadMessages(p.selectedSession),
-					p.loadUsage(p.selectedSession),
-				)
+				p.setSelectedSession(sessions[p.cursor].ID)
+				return p, p.schedulePreviewLoad(p.selectedSession)
 			}
 		}
 
@@ -299,11 +381,8 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		}
 		p.ensureCursorVisible()
 		if p.twoPane && p.cursor < len(sessions) {
-			p.selectedSession = sessions[p.cursor].ID
-			return p, tea.Batch(
-				p.loadMessages(p.selectedSession),
-				p.loadUsage(p.selectedSession),
-			)
+			p.setSelectedSession(sessions[p.cursor].ID)
+			return p, p.schedulePreviewLoad(p.selectedSession)
 		}
 
 	case "ctrl+u":
@@ -316,11 +395,8 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		}
 		p.ensureCursorVisible()
 		if p.twoPane && p.cursor < len(sessions) {
-			p.selectedSession = sessions[p.cursor].ID
-			return p, tea.Batch(
-				p.loadMessages(p.selectedSession),
-				p.loadUsage(p.selectedSession),
-			)
+			p.setSelectedSession(sessions[p.cursor].ID)
+			return p, p.schedulePreviewLoad(p.selectedSession)
 		}
 
 	case "tab":
@@ -337,7 +413,7 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "enter":
 		if len(sessions) > 0 && p.cursor < len(sessions) {
-			p.selectedSession = sessions[p.cursor].ID
+			p.setSelectedSession(sessions[p.cursor].ID)
 			// In two-pane mode, switch focus to messages pane
 			if p.twoPane {
 				p.activePane = PaneMessages
@@ -384,16 +460,27 @@ func (p *Plugin) updateSearch(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.searchResults = nil
 		p.cursor = 0
 		p.scrollOff = 0
+		if p.twoPane && len(p.sessions) > 0 {
+			p.setSelectedSession(p.sessions[0].ID)
+			return p, p.schedulePreviewLoad(p.selectedSession)
+		}
 
 	case "enter":
 		sessions := p.visibleSessions()
 		if len(sessions) > 0 && p.cursor < len(sessions) {
-			p.selectedSession = sessions[p.cursor].ID
-			p.view = ViewMessages
+			p.setSelectedSession(sessions[p.cursor].ID)
+			if p.twoPane {
+				p.activePane = PaneMessages
+			} else {
+				p.view = ViewMessages
+			}
 			p.msgCursor = 0
 			p.msgScrollOff = 0
 			p.searchMode = false
-			return p, p.loadMessages(p.selectedSession)
+			return p, tea.Batch(
+				p.loadMessages(p.selectedSession),
+				p.loadUsage(p.selectedSession),
+			)
 		}
 
 	case "backspace":
@@ -408,13 +495,93 @@ func (p *Plugin) updateSearch(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		if p.cursor > 0 {
 			p.cursor--
 			p.ensureCursorVisible()
+			if p.twoPane {
+				sessions := p.visibleSessions()
+				if p.cursor < len(sessions) {
+					p.setSelectedSession(sessions[p.cursor].ID)
+					return p, p.schedulePreviewLoad(p.selectedSession)
+				}
+			}
 		}
 
-	case "down", "ctrl+n":
+	case "down", "ctrl+n", "j":
 		sessions := p.visibleSessions()
 		if p.cursor < len(sessions)-1 {
 			p.cursor++
 			p.ensureCursorVisible()
+			if p.twoPane && p.cursor < len(sessions) {
+				p.setSelectedSession(sessions[p.cursor].ID)
+				return p, p.schedulePreviewLoad(p.selectedSession)
+			}
+		}
+
+	case "k":
+		if p.cursor > 0 {
+			p.cursor--
+			p.ensureCursorVisible()
+			if p.twoPane {
+				sessions := p.visibleSessions()
+				if p.cursor < len(sessions) {
+					p.setSelectedSession(sessions[p.cursor].ID)
+					return p, p.schedulePreviewLoad(p.selectedSession)
+				}
+			}
+		}
+
+	case "ctrl+d":
+		sessions := p.visibleSessions()
+		if len(sessions) == 0 {
+			return p, nil
+		}
+		pageSize := 10
+		if p.cursor+pageSize < len(sessions) {
+			p.cursor += pageSize
+		} else {
+			p.cursor = len(sessions) - 1
+		}
+		p.ensureCursorVisible()
+		if p.twoPane && p.cursor < len(sessions) {
+			p.setSelectedSession(sessions[p.cursor].ID)
+			return p, p.schedulePreviewLoad(p.selectedSession)
+		}
+
+	case "ctrl+u":
+		sessions := p.visibleSessions()
+		if len(sessions) == 0 {
+			return p, nil
+		}
+		pageSize := 10
+		if p.cursor-pageSize >= 0 {
+			p.cursor -= pageSize
+		} else {
+			p.cursor = 0
+		}
+		p.ensureCursorVisible()
+		if p.twoPane && p.cursor < len(sessions) {
+			p.setSelectedSession(sessions[p.cursor].ID)
+			return p, p.schedulePreviewLoad(p.selectedSession)
+		}
+
+	case "g":
+		p.cursor = 0
+		p.scrollOff = 0
+		if p.twoPane {
+			sessions := p.visibleSessions()
+			if len(sessions) > 0 {
+				p.setSelectedSession(sessions[0].ID)
+				return p, p.schedulePreviewLoad(p.selectedSession)
+			}
+		}
+
+	case "G":
+		sessions := p.visibleSessions()
+		if len(sessions) > 0 {
+			p.cursor = len(sessions) - 1
+			p.ensureCursorVisible()
+			if p.twoPane {
+				p.setSelectedSession(sessions[p.cursor].ID)
+				return p, p.schedulePreviewLoad(p.selectedSession)
+			}
 		}
 
 	default:
@@ -424,6 +591,13 @@ func (p *Plugin) updateSearch(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.filterSessions()
 			p.cursor = 0
 			p.scrollOff = 0
+			if p.twoPane {
+				sessions := p.visibleSessions()
+				if len(sessions) > 0 {
+					p.setSelectedSession(sessions[0].ID)
+					return p, p.schedulePreviewLoad(p.selectedSession)
+				}
+			}
 		}
 	}
 
@@ -567,6 +741,24 @@ func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.turnCursor = len(p.turns) - 1
 			p.ensureTurnCursorVisible()
 		}
+
+	case "ctrl+d":
+		pageSize := 10
+		if p.turnCursor+pageSize < len(p.turns) {
+			p.turnCursor += pageSize
+		} else if len(p.turns) > 0 {
+			p.turnCursor = len(p.turns) - 1
+		}
+		p.ensureTurnCursorVisible()
+
+	case "ctrl+u":
+		pageSize := 10
+		if p.turnCursor-pageSize >= 0 {
+			p.turnCursor -= pageSize
+		} else {
+			p.turnCursor = 0
+		}
+		p.ensureTurnCursorVisible()
 
 	case "T":
 		// Toggle thinking block expansion for current turn's messages
@@ -815,7 +1007,7 @@ func (p *Plugin) loadMessages(sessionID string) tea.Cmd {
 			messages = messages[len(messages)-maxMessagesInMemory:]
 		}
 
-		return MessagesLoadedMsg{Messages: messages}
+		return MessagesLoadedMsg{SessionID: sessionID, Messages: messages}
 	}
 }
 
@@ -1111,6 +1303,7 @@ type SessionsLoadedMsg struct {
 }
 
 type MessagesLoadedMsg struct {
+	SessionID string
 	Messages []adapter.Message
 }
 
@@ -1119,6 +1312,11 @@ type WatchStartedMsg struct {
 	Channel <-chan adapter.Event
 }
 type ErrorMsg struct{ Err error }
+
+type PreviewLoadMsg struct {
+	Token     int
+	SessionID string
+}
 
 // TickCmd returns a command that triggers periodic refresh.
 func TickCmd() tea.Cmd {

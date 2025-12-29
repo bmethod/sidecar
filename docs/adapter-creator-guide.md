@@ -42,6 +42,7 @@ When building sessions, populate adapter identity:
 adapter.Session{
 	ID:          meta.SessionID,
 	Name:        shortID(meta.SessionID),
+	Slug:        meta.SessionID, // optional: short display slug if you have one
 	AdapterID:   "<your-id>",
 	AdapterName: "<Your Name>",
 	// ... timestamps, tokens, counts
@@ -60,6 +61,8 @@ const (
 	adapterName = "My Adapter"
 )
 ```
+
+Pick a stable `adapterID` (it becomes part of persisted UI state like filters).
 
 ### 2) Implement Detect
 
@@ -115,13 +118,18 @@ func init() {
 }
 ```
 
-And ensure the package is imported (blank import) in `cmd/sidecar/main.go`.
+And ensure the package is imported (blank import) in `cmd/sidecar/main.go`:
+
+```go
+import (
+	_ "github.com/sst/sidecar/internal/adapter/myadapter"
+)
+```
 
 ## UI Integration Notes
 
 - Conversations view shows adapter badges using `AdapterID`/`AdapterName`.
-- `resumeCommand()` is adapter-specific; add a mapping in
-  `internal/plugins/conversations/view.go`.
+- `resumeCommand()` is adapter-specific; add a mapping in `internal/plugins/conversations/view.go` if your tool supports resuming sessions.
 - `modelShortName()` should be extended if your models are non-Claude.
 
 ## Testing Checklist

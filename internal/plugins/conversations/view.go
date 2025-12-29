@@ -96,6 +96,14 @@ func (p *Plugin) renderGroupedSessions(sb *strings.Builder, groups []SessionGrou
 
 		// Render group header if group changed
 		if sessionGroup != currentGroup {
+			// Spacer line above specific headers (but never as the first visible line)
+			if currentGroup != "" && (sessionGroup == "Yesterday" || sessionGroup == "This Week") {
+				sb.WriteString("\n")
+				lineCount++
+				if lineCount >= contentHeight {
+					break
+				}
+			}
 			currentGroup = sessionGroup
 			// Find group stats
 			var groupStats string
@@ -148,6 +156,12 @@ func (p *Plugin) renderSessionRow(session adapter.Session, selected bool) string
 		cursor = styles.ListCursor.Render("> ")
 	}
 
+	// Sub-conversation indent (keep cursor aligned at far left)
+	indent := ""
+	if session.IsSubAgent {
+		indent = "  "
+	}
+
 	// Type indicator: active (●), sub-agent (↳), or space
 	typeIndicator := " "
 	if session.IsActive {
@@ -159,26 +173,17 @@ func (p *Plugin) renderSessionRow(session adapter.Session, selected bool) string
 	badgeText := adapterBadgeText(session)
 	badge := styles.Muted.Render(badgeText)
 
-	// Timestamp - just time for today, date otherwise
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	var ts string
-	if session.UpdatedAt.After(today) {
-		ts = session.UpdatedAt.Local().Format("15:04")
-	} else {
-		ts = session.UpdatedAt.Local().Format("01-02 15:04")
+	// Conversation length (replaces timestamp column in list views)
+	length := "--"
+	if session.Duration > 0 {
+		length = formatSessionDuration(session.Duration)
 	}
+	lengthCol := fmt.Sprintf("%6s", length)
 
 	// Session name/ID
 	name := session.Name
 	if name == "" {
 		name = shortID(session.ID)
-	}
-
-	// Duration
-	dur := ""
-	if session.Duration > 0 {
-		dur = formatSessionDuration(session.Duration)
 	}
 
 	// Compose line style
@@ -187,26 +192,19 @@ func (p *Plugin) renderSessionRow(session adapter.Session, selected bool) string
 		lineStyle = styles.ListItemSelected
 	}
 
-	// Build the row: cursor + active + time + name + duration
-	// Format: ● 14:23  "Add auth flow"                        12m
-	maxNameWidth := p.width - 25 - len(badgeText) - 1
+	// Build the row: cursor + indent + active/sub + badge + length + name
+	maxNameWidth := p.width - 18 - len(badgeText)
 	if len(name) > maxNameWidth && maxNameWidth > 3 {
 		name = name[:maxNameWidth-3] + "..."
 	}
 
-	// Pad name to align duration
-	namePadded := name
-	if len(namePadded) < maxNameWidth {
-		namePadded = name + strings.Repeat(" ", maxNameWidth-len(name))
-	}
-
-	return lineStyle.Render(fmt.Sprintf("%s%s %s %s  %s  %s",
+	return lineStyle.Render(fmt.Sprintf("%s%s%s %s %s  %s",
 		cursor,
+		indent,
 		typeIndicator,
 		badge,
-		styles.Muted.Render(ts),
-		namePadded,
-		styles.Muted.Render(dur)))
+		styles.Muted.Render(lengthCol),
+		name))
 }
 
 // renderMessages renders the message view with enhanced header.
@@ -297,6 +295,9 @@ func (p *Plugin) renderSessionHeader(sb *strings.Builder, sessionName string, se
 			formatK(s.TotalTokensIn),
 			formatK(s.TotalTokensOut))
 
+		if session != nil && !session.UpdatedAt.IsZero() {
+			statsLine += fmt.Sprintf("  │  updated %s", session.UpdatedAt.Local().Format("01-02 15:04"))
+		}
 		if s.TotalCost >= 0.01 {
 			statsLine += fmt.Sprintf("  │  ~$%.2f", s.TotalCost)
 		}
@@ -304,6 +305,9 @@ func (p *Plugin) renderSessionHeader(sb *strings.Builder, sessionName string, se
 			statsLine += fmt.Sprintf("  │  %d files", s.FileCount)
 		}
 
+		if len(statsLine) > p.width-2 {
+			statsLine = statsLine[:p.width-5] + "..."
+		}
 		sb.WriteString(styles.Muted.Render(statsLine))
 		sb.WriteString("\n")
 		lines++
@@ -926,33 +930,93 @@ func (p *Plugin) renderSidebarPane(height int) string {
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
-	end := p.scrollOff + contentHeight
-	if end > len(sessions) {
-		end = len(sessions)
-	}
+	if !p.searchMode {
+		groups := GroupSessionsByTime(sessions)
+		p.renderGroupedCompactSessions(&sb, groups, contentHeight, contentWidth)
+	} else {
+		end := p.scrollOff + contentHeight
+		if end > len(sessions) {
+			end = len(sessions)
+		}
 
-	for i := p.scrollOff; i < end; i++ {
-		session := sessions[i]
-		selected := i == p.cursor
-		sb.WriteString(p.renderCompactSessionRow(session, selected, contentWidth))
-		sb.WriteString("\n")
+		for i := p.scrollOff; i < end; i++ {
+			session := sessions[i]
+			selected := i == p.cursor
+			sb.WriteString(p.renderCompactSessionRow(session, selected, contentWidth))
+			sb.WriteString("\n")
+		}
 	}
 
 	return sb.String()
 }
 
+func (p *Plugin) renderGroupedCompactSessions(sb *strings.Builder, groups []SessionGroup, contentHeight int, contentWidth int) {
+	sessions := p.visibleSessions()
+
+	lineCount := 0
+	currentGroup := ""
+
+	for i := p.scrollOff; i < len(sessions) && lineCount < contentHeight; i++ {
+		session := sessions[i]
+		sessionGroup := getSessionGroup(session.UpdatedAt)
+
+		if sessionGroup != currentGroup {
+			if currentGroup != "" && (sessionGroup == "Yesterday" || sessionGroup == "This Week") {
+				sb.WriteString("\n")
+				lineCount++
+				if lineCount >= contentHeight {
+					break
+				}
+			}
+
+			currentGroup = sessionGroup
+
+			// Find group count
+			groupStats := ""
+			for _, g := range groups {
+				if g.Label == sessionGroup {
+					groupStats = fmt.Sprintf(" (%d)", g.Summary.SessionCount)
+					break
+				}
+			}
+
+			groupHeader := sessionGroup + groupStats
+			if len(groupHeader) > contentWidth {
+				groupHeader = groupHeader[:contentWidth]
+			}
+			sb.WriteString(styles.Muted.Render(groupHeader))
+			sb.WriteString("\n")
+			lineCount++
+			if lineCount >= contentHeight {
+				break
+			}
+		}
+
+		selected := i == p.cursor
+		sb.WriteString(p.renderCompactSessionRow(session, selected, contentWidth))
+		sb.WriteString("\n")
+		lineCount++
+	}
+}
+
 // renderCompactSessionRow renders a compact session row for the sidebar.
 func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool, maxWidth int) string {
 	// Calculate prefix length for width calculations
-	// cursor(2) + active(1) + selected(0-1) + subagent indent(2)
+	// cursor(2) + active(1) + selected(0-1) + subagent indent(4) + badge + space + length(4) + space
 	badgeText := adapterBadgeText(session)
 	badge := styles.Muted.Render(badgeText)
-	prefixLen := 3 + len(badgeText) + 1
+	length := "--"
+	if session.Duration > 0 {
+		length = formatSessionDuration(session.Duration)
+	}
+	lengthCol := fmt.Sprintf("%4s", length)
+
+	prefixLen := 3 + len(badgeText) + 1 + len(lengthCol) + 1
 	if session.ID == p.selectedSession {
 		prefixLen++
 	}
 	if session.IsSubAgent {
-		prefixLen += 2 // extra indent for sub-agents
+		prefixLen += 4 // extra indent for sub-agents
 	}
 
 	// Session name/ID
@@ -982,7 +1046,7 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 
 	// Sub-agent indent (before indicator)
 	if session.IsSubAgent {
-		sb.WriteString("  ")
+		sb.WriteString("    ")
 	}
 
 	// Type indicator: active (●), sub-agent (↳), or space
@@ -1002,13 +1066,27 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 	sb.WriteString(" ")
 	sb.WriteString(name)
 
-	result := sb.String()
+	row := sb.String()
+
+	// Right-align length (compute padding based on visible widths, not ANSI sequences).
+	visibleLen := 2 // cursor
+	if session.IsSubAgent {
+		visibleLen += 4
+	}
+	visibleLen += 1 // indicator
+	if session.ID == p.selectedSession {
+		visibleLen += 1 // selected marker '*'
+	}
+	visibleLen += len(badgeText) + 1 + len(name) // badge + space + name
+	if padding := maxWidth - visibleLen - len(lengthCol) - 1; padding > 0 {
+		row += strings.Repeat(" ", padding) + " " + styles.Muted.Render(lengthCol)
+	}
 
 	// Apply selection background if selected
 	if selected {
-		return styles.ListItemSelected.Render(result)
+		return styles.ListItemSelected.Render(row)
 	}
-	return result
+	return row
 }
 
 // renderMainPane renders the message list for the main pane.
@@ -1059,6 +1137,9 @@ func (p *Plugin) renderMainPane(paneWidth, height int) string {
 			s.MessageCount,
 			formatK(s.TotalTokensIn),
 			formatK(s.TotalTokensOut))
+		if session != nil && !session.UpdatedAt.IsZero() {
+			statsLine += fmt.Sprintf(" │ updated %s", session.UpdatedAt.Local().Format("01-02 15:04"))
+		}
 		if len(statsLine) > contentWidth {
 			statsLine = statsLine[:contentWidth-3] + "..."
 		}
