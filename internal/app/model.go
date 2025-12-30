@@ -7,6 +7,7 @@ import (
 	"github.com/sst/sidecar/internal/keymap"
 	"github.com/sst/sidecar/internal/palette"
 	"github.com/sst/sidecar/internal/plugin"
+	"github.com/sst/sidecar/internal/version"
 )
 
 // Model is the root Bubble Tea model for the sidecar application.
@@ -41,22 +42,27 @@ type Model struct {
 	// Ready state
 	ready bool
 
+	// Version info
+	currentVersion  string
+	updateAvailable *version.UpdateAvailableMsg
+
 	// Intro animation
 	intro IntroModel
 }
 
 // New creates a new application model.
-func New(reg *plugin.Registry, km *keymap.Registry) Model {
+func New(reg *plugin.Registry, km *keymap.Registry, currentVersion string) Model {
 	return Model{
-		registry:      reg,
-		keymap:        km,
-		activePlugin:  0,
-		activeContext: "global",
-		showFooter:    true,
-		palette:       palette.New(),
-		ui:            NewUIState(),
-		ready:         false,
-		intro:         NewIntroModel(),
+		registry:       reg,
+		keymap:         km,
+		activePlugin:   0,
+		activeContext:  "global",
+		showFooter:     true,
+		palette:        palette.New(),
+		ui:             NewUIState(),
+		ready:          false,
+		intro:          NewIntroModel(),
+		currentVersion: currentVersion,
 	}
 }
 
@@ -65,6 +71,7 @@ func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		tickCmd(),
 		IntroTick(),
+		version.CheckAsync(m.currentVersion),
 	}
 
 	// Start all registered plugins

@@ -14,6 +14,7 @@ import (
 	_ "github.com/sst/sidecar/internal/adapter/claudecode"
 	_ "github.com/sst/sidecar/internal/adapter/codex"
 	_ "github.com/sst/sidecar/internal/adapter/opencode"
+	_ "github.com/sst/sidecar/internal/adapter/warp"
 	"github.com/sst/sidecar/internal/app"
 	"github.com/sst/sidecar/internal/config"
 	"github.com/sst/sidecar/internal/event"
@@ -113,7 +114,8 @@ func main() {
 	}
 
 	// Create and run application
-	model := app.New(registry, km)
+	currentVersion := effectiveVersion(Version)
+	model := app.New(registry, km, currentVersion)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

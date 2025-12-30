@@ -477,6 +477,22 @@ func (m Model) buildDiagnosticsContent() string {
 	b.WriteString(fmt.Sprintf("  Refresh: %s\n", styles.Muted.Render(m.ui.LastRefresh.Format("15:04:05"))))
 	b.WriteString("\n")
 
+	// Version info
+	b.WriteString(styles.Title.Render("Version"))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("  Current: %s\n", styles.Muted.Render(m.currentVersion)))
+	if m.updateAvailable != nil {
+		b.WriteString(fmt.Sprintf("  Latest:  %s  ", m.updateAvailable.LatestVersion))
+		b.WriteString(styles.StatusModified.Render("update available"))
+		b.WriteString("\n\n")
+		b.WriteString("  Update command:\n")
+		b.WriteString(fmt.Sprintf("  %s\n", styles.Muted.Render(m.updateAvailable.UpdateCommand)))
+	} else {
+		b.WriteString(styles.StatusCompleted.Render("  up to date"))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+
 	// Last error
 	if m.lastError != nil {
 		b.WriteString(styles.Title.Render("Last Error"))

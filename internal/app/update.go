@@ -1,12 +1,14 @@
 package app
 
 import (
+	"fmt"
 	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sst/sidecar/internal/palette"
 	"github.com/sst/sidecar/internal/plugins/filebrowser"
+	"github.com/sst/sidecar/internal/version"
 )
 
 // Update handles all messages and returns the updated model and commands.
@@ -82,6 +84,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd, ok := m.keymap.GetCommand(msg.CommandID); ok && cmd.Handler != nil {
 			return m, cmd.Handler()
 		}
+		return m, nil
+
+	case version.UpdateAvailableMsg:
+		m.updateAvailable = &msg
+		m.ShowToast(
+			fmt.Sprintf("Update %s available! Press ! for details", msg.LatestVersion),
+			15*time.Second,
+		)
 		return m, nil
 	}
 
