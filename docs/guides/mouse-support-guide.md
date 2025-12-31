@@ -187,6 +187,28 @@ Key features:
 - Double-click to open files or toggle folders
 - Drag pane divider to resize
 
+## Embedded Plugins (TD Monitor)
+
+When embedding a plugin that has its own mouse support (like TD), coordinate offsets must be handled carefully:
+
+1. Sidecar subtracts 2 from mouse Y (for app header) before forwarding to plugins
+2. The embedded plugin's hit bounds must be calculated for the same coordinate space
+3. For TD, this is done by adjusting `WindowSizeMsg.Height` by -2 before forwarding
+
+```go
+// In tdmonitor/plugin.go Update()
+if wsm, ok := msg.(tea.WindowSizeMsg); ok {
+    adjustedMsg := tea.WindowSizeMsg{
+        Width:  wsm.Width,
+        Height: wsm.Height - 2, // Match Y offset applied to MouseMsg
+    }
+    newModel, cmd := p.model.Update(adjustedMsg)
+    // ...
+}
+```
+
+This ensures TD's `PanelBounds` (calculated in `updatePanelBounds()`) align with the adjusted mouse coordinates.
+
 ## Testing Mouse Support
 
 Since mouse events require terminal interaction, test by:

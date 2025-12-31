@@ -23,7 +23,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
-		return m, nil
+		// Forward adjusted WindowSizeMsg to all plugins
+		// Plugins receive the content area size (minus header)
+		adjustedMsg := tea.WindowSizeMsg{
+			Width:  msg.Width,
+			Height: msg.Height - headerHeight, // headerHeight = 2
+		}
+		plugins := m.registry.Plugins()
+		var cmds []tea.Cmd
+		for i, p := range plugins {
+			newPlugin, cmd := p.Update(adjustedMsg)
+			plugins[i] = newPlugin
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		return m, tea.Batch(cmds...)
 
 	case tea.MouseMsg:
 		// Ignore mouse events when modals are open
@@ -41,6 +56,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Alt:    msg.Alt,
 				Shift:  msg.Shift,
 			}
+			// Debug: log mouse events
+			m.lastError = fmt.Errorf("mouse: x=%d y=%d btn=%v action=%v -> plugin=%s", msg.X, msg.Y, msg.Button, msg.Action, p.ID())
 			newPlugin, cmd := p.Update(adjusted)
 			plugins := m.registry.Plugins()
 			if m.activePlugin < len(plugins) {
