@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sst/sidecar/internal/app"
+	"github.com/sst/sidecar/internal/mouse"
 	"github.com/sst/sidecar/internal/plugin"
 	"github.com/sst/sidecar/internal/plugins/filebrowser"
 	"github.com/sst/sidecar/internal/state"
@@ -110,10 +111,13 @@ type Plugin struct {
 	lastRefresh time.Time // Debounce rapid refreshes
 
 	// Commit state
-	commitMessage      textarea.Model
-	commitError        string
-	commitInProgress   bool
-	commitButtonFocus  bool // true when button is focused instead of textarea
+	commitMessage     textarea.Model
+	commitError       string
+	commitInProgress  bool
+	commitButtonFocus bool // true when button is focused instead of textarea
+
+	// Mouse support
+	mouseHandler *mouse.Handler
 }
 
 // New creates a new git status plugin.
@@ -121,6 +125,7 @@ func New() *Plugin {
 	return &Plugin{
 		sidebarVisible: true,
 		activePane:     PaneSidebar,
+		mouseHandler:   mouse.NewHandler(),
 	}
 }
 
@@ -188,6 +193,12 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p.updateCommit(msg)
 		case ViewModePushMenu:
 			return p.updatePushMenu(msg)
+		}
+
+	case tea.MouseMsg:
+		// Handle mouse events in status view only
+		if p.viewMode == ViewModeStatus {
+			return p.handleMouse(msg)
 		}
 
 	case app.RefreshMsg:

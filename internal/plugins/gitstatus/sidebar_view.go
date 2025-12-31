@@ -48,7 +48,21 @@ func (p *Plugin) renderThreePaneView() string {
 		innerHeight = 1
 	}
 
+	// Clear and rebuild hit regions for mouse support
+	p.mouseHandler.Clear()
+
 	if p.sidebarVisible {
+		// Register hit regions for sidebar, divider, and diff pane
+		// Sidebar region (includes border)
+		p.mouseHandler.HitMap.AddRect(regionSidebar, 0, 0, p.sidebarWidth+1, p.height, nil)
+
+		// Pane divider region (1 char wide between panes)
+		p.mouseHandler.HitMap.AddRect(regionPaneDivider, p.sidebarWidth+1, 0, 2, p.height, nil)
+
+		// Diff pane region
+		diffX := p.sidebarWidth + 3
+		p.mouseHandler.HitMap.AddRect(regionDiffPane, diffX, 0, p.diffPaneWidth, p.height, nil)
+
 		// Determine border styles based on focus
 		sidebarBorder := styles.PanelInactive
 		diffBorder := styles.PanelInactive
@@ -75,6 +89,8 @@ func (p *Plugin) renderThreePaneView() string {
 	}
 
 	// Full-width diff pane when sidebar is hidden
+	p.mouseHandler.HitMap.AddRect(regionDiffPane, 0, 0, p.width, p.height, nil)
+
 	diffBorder := styles.PanelActive
 	diffContent := p.renderDiffPane(innerHeight)
 
@@ -88,8 +104,19 @@ func (p *Plugin) renderThreePaneView() string {
 func (p *Plugin) renderSidebar(visibleHeight int) string {
 	var sb strings.Builder
 
-	// Header
+	// Track Y position for mouse hit regions
+	// Start at 3: 1 for pane border + 2 for header lines
+	currentY := 3
+
+	// Header with branch name
 	header := styles.Title.Render("Files")
+	if p.pushStatus != nil {
+		if p.pushStatus.CurrentBranch != "" {
+			header += " " + styles.Muted.Render(p.pushStatus.CurrentBranch)
+		} else if p.pushStatus.DetachedHead {
+			header += " " + styles.Muted.Render("(detached)")
+		}
+	}
 	sb.WriteString(header)
 	sb.WriteString("\n\n")
 
@@ -114,7 +141,7 @@ func (p *Plugin) renderSidebar(visibleHeight int) string {
 
 		// Staged section
 		if len(p.tree.Staged) > 0 && lineNum < filesHeight {
-			sb.WriteString(p.renderSidebarSection("Staged", p.tree.Staged, &lineNum, &globalIdx, filesHeight))
+			sb.WriteString(p.renderSidebarSection("Staged", p.tree.Staged, &lineNum, &globalIdx, filesHeight, &currentY))
 		}
 
 		// Modified section
@@ -122,8 +149,9 @@ func (p *Plugin) renderSidebar(visibleHeight int) string {
 			if len(p.tree.Staged) > 0 {
 				sb.WriteString("\n")
 				lineNum++
+				currentY++
 			}
-			sb.WriteString(p.renderSidebarSection("Modified", p.tree.Modified, &lineNum, &globalIdx, filesHeight))
+			sb.WriteString(p.renderSidebarSection("Modified", p.tree.Modified, &lineNum, &globalIdx, filesHeight, &currentY))
 		}
 
 		// Untracked section
@@ -131,23 +159,28 @@ func (p *Plugin) renderSidebar(visibleHeight int) string {
 			if len(p.tree.Staged) > 0 || len(p.tree.Modified) > 0 {
 				sb.WriteString("\n")
 				lineNum++
+				currentY++
 			}
-			sb.WriteString(p.renderSidebarSection("Untracked", p.tree.Untracked, &lineNum, &globalIdx, filesHeight))
+			sb.WriteString(p.renderSidebarSection("Untracked", p.tree.Untracked, &lineNum, &globalIdx, filesHeight, &currentY))
 		}
 	}
 
 	// Separator
 	sb.WriteString("\n")
+	currentY++
 	sb.WriteString(styles.Muted.Render(strings.Repeat("─", p.sidebarWidth-4)))
 	sb.WriteString("\n")
+	currentY++
 
 	// Push status/error message
 	if p.pushInProgress {
 		sb.WriteString(styles.StatusInProgress.Render("Pushing..."))
 		sb.WriteString("\n")
+		currentY++
 	} else if p.pushSuccess {
 		sb.WriteString(styles.StatusStaged.Render("✓ Pushed"))
 		sb.WriteString("\n")
+		currentY++
 	} else if p.pushError != "" {
 		// Truncate error if too long (account for "✗ " prefix)
 		errMsg := p.pushError
@@ -157,16 +190,17 @@ func (p *Plugin) renderSidebar(visibleHeight int) string {
 		}
 		sb.WriteString(styles.StatusDeleted.Render("✗ " + errMsg))
 		sb.WriteString("\n")
+		currentY++
 	}
 
 	// Recent commits section
-	sb.WriteString(p.renderRecentCommits())
+	sb.WriteString(p.renderRecentCommits(&currentY))
 
 	return sb.String()
 }
 
 // renderSidebarSection renders a file section in the sidebar.
-func (p *Plugin) renderSidebarSection(title string, entries []*FileEntry, lineNum, globalIdx *int, maxLines int) string {
+func (p *Plugin) renderSidebarSection(title string, entries []*FileEntry, lineNum, globalIdx *int, maxLines int, currentY *int) string {
 	var sb strings.Builder
 
 	// Section header with color based on type
@@ -180,6 +214,7 @@ func (p *Plugin) renderSidebarSection(title string, entries []*FileEntry, lineNu
 	sb.WriteString(headerStyle.Render(fmt.Sprintf("%s (%d)", title, len(entries))))
 	sb.WriteString("\n")
 	*lineNum++
+	*currentY++
 
 	// Available width for file names
 	maxWidth := p.sidebarWidth - 6 // Account for padding and cursor
@@ -191,10 +226,15 @@ func (p *Plugin) renderSidebarSection(title string, entries []*FileEntry, lineNu
 
 		selected := *globalIdx == p.cursor
 		line := p.renderSidebarEntry(entry, selected, maxWidth)
+
+		// Register hit region for this file entry
+		p.mouseHandler.HitMap.AddRect(regionFile, 1, *currentY, p.sidebarWidth-2, 1, *globalIdx)
+
 		sb.WriteString(line)
 		sb.WriteString("\n")
 		*lineNum++
 		*globalIdx++
+		*currentY++
 	}
 
 	return sb.String()
@@ -270,7 +310,7 @@ func (p *Plugin) renderSidebarEntry(entry *FileEntry, selected bool, maxWidth in
 }
 
 // renderRecentCommits renders the recent commits section in the sidebar.
-func (p *Plugin) renderRecentCommits() string {
+func (p *Plugin) renderRecentCommits(currentY *int) string {
 	var sb strings.Builder
 
 	// Section header with push status
@@ -283,6 +323,7 @@ func (p *Plugin) renderRecentCommits() string {
 	}
 	sb.WriteString(styles.Subtitle.Render(header))
 	sb.WriteString("\n")
+	*currentY++
 
 	if len(p.recentCommits) == 0 {
 		sb.WriteString(styles.Muted.Render("No commits"))
@@ -331,7 +372,11 @@ func (p *Plugin) renderRecentCommits() string {
 			lineStyle = styles.ListItemSelected
 		}
 
+		// Register hit region for this commit
+		p.mouseHandler.HitMap.AddRect(regionCommit, 1, *currentY, p.sidebarWidth-2, 1, i)
+
 		sb.WriteString(lineStyle.Render(fmt.Sprintf("%s%s%s %s", cursor, indicator, hash, msg)))
+		*currentY++
 		if i < maxCommits-1 {
 			sb.WriteString("\n")
 		}

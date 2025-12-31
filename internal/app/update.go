@@ -25,6 +25,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 		return m, nil
 
+	case tea.MouseMsg:
+		// Ignore mouse events when modals are open
+		if m.showHelp || m.showDiagnostics || m.showQuitConfirm || m.showPalette {
+			return m, nil
+		}
+		// Forward mouse events to active plugin with Y offset for app header (2 lines)
+		if p := m.ActivePlugin(); p != nil {
+			adjusted := tea.MouseMsg{
+				X:      msg.X,
+				Y:      msg.Y - 2, // Offset for app header
+				Button: msg.Button,
+				Action: msg.Action,
+				Ctrl:   msg.Ctrl,
+				Alt:    msg.Alt,
+				Shift:  msg.Shift,
+			}
+			newPlugin, cmd := p.Update(adjusted)
+			plugins := m.registry.Plugins()
+			if m.activePlugin < len(plugins) {
+				plugins[m.activePlugin] = newPlugin
+			}
+			m.updateContext()
+			return m, cmd
+		}
+		return m, nil
+
 	case IntroTickMsg:
 		if m.intro.Active && !m.intro.Done {
 			m.intro.Update(16 * time.Millisecond)
