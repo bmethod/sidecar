@@ -32,7 +32,7 @@ Add automatic version checking that queries GitHub releases on startup, compares
 func Check(currentVersion string) CheckResult
 ```
 
-- Uses `https://api.github.com/repos/sst/sidecar/releases/latest`
+- Uses `https://api.github.com/repos/marcus/sidecar/releases/latest`
 - 5-second timeout to avoid blocking
 - Skips check for dev versions (`devel`, empty, `devel+abc123`)
 

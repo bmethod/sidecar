@@ -77,7 +77,7 @@ import (
     tea "github.com/charmbracelet/bubbletea"
     "github.com/marcus/td/internal/tui/monitor"
     "github.com/marcus/td/internal/db"
-    "github.com/sst/sidecar/internal/plugin"
+    "github.com/marcus/sidecar/internal/plugin"
 )
 
 type Plugin struct {

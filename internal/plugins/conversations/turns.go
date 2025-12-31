@@ -1,7 +1,7 @@
 package conversations
 
 import (
-	"github.com/sst/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/adapter"
 )
 
 // Turn represents a sequence of consecutive messages from the same role.

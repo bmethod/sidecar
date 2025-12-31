@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	repoOwner   = "sst"
+	repoOwner   = "marcus"
 	repoName    = "sidecar"
 	tdRepoOwner = "marcus"
 	tdRepoName  = "td"

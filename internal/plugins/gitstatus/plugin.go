@@ -9,11 +9,11 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sst/sidecar/internal/app"
-	"github.com/sst/sidecar/internal/mouse"
-	"github.com/sst/sidecar/internal/plugin"
-	"github.com/sst/sidecar/internal/plugins/filebrowser"
-	"github.com/sst/sidecar/internal/state"
+	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/mouse"
+	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/plugins/filebrowser"
+	"github.com/marcus/sidecar/internal/state"
 )
 
 const (

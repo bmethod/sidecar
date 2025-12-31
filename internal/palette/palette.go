@@ -3,8 +3,8 @@ package palette
 import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/sst/sidecar/internal/keymap"
-	"github.com/sst/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/keymap"
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 // CommandSelectedMsg is sent when a command is selected from the palette.

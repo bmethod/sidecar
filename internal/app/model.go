@@ -4,10 +4,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/sst/sidecar/internal/keymap"
-	"github.com/sst/sidecar/internal/palette"
-	"github.com/sst/sidecar/internal/plugin"
-	"github.com/sst/sidecar/internal/version"
+	"github.com/marcus/sidecar/internal/keymap"
+	"github.com/marcus/sidecar/internal/palette"
+	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/version"
 )
 
 // TabBounds represents the X position range of a tab for mouse hit testing.

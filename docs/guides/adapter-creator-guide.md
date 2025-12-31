@@ -109,7 +109,7 @@ Add a `register.go` with an init hook:
 ```go
 package myadapter
 
-import "github.com/sst/sidecar/internal/adapter"
+import "github.com/marcus/sidecar/internal/adapter"
 
 func init() {
 	adapter.RegisterFactory(func() adapter.Adapter {
@@ -122,7 +122,7 @@ And ensure the package is imported (blank import) in `cmd/sidecar/main.go`:
 
 ```go
 import (
-	_ "github.com/sst/sidecar/internal/adapter/myadapter"
+	_ "github.com/marcus/sidecar/internal/adapter/myadapter"
 )
 ```
 

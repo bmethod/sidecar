@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/sst/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/adapter"
 )
 
 // NewWatcher creates a watcher for Claude Code session changes.

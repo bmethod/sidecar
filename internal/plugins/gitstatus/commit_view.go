@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sst/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // renderCommit renders the commit message view.

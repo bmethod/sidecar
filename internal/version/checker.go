@@ -27,7 +27,7 @@ type TdVersionMsg struct {
 // updateCommand generates the go install command for updating.
 func updateCommand(version string) string {
 	return fmt.Sprintf(
-		"go install -ldflags \"-X main.Version=%s\" github.com/sst/sidecar/cmd/sidecar@%s",
+		"go install -ldflags \"-X main.Version=%s\" github.com/marcus/sidecar/cmd/sidecar@%s",
 		version, version,
 	)
 }

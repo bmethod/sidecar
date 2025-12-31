@@ -5,7 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/sst/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/adapter"
 )
 
 func TestNew(t *testing.T) {

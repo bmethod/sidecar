@@ -2,7 +2,7 @@ package gitstatus
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/sst/sidecar/internal/mouse"
+	"github.com/marcus/sidecar/internal/mouse"
 )
 
 // Hit region IDs

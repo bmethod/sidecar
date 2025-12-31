@@ -14,7 +14,7 @@ func TestUpdateCommand(t *testing.T) {
 	}{
 		{
 			version:  "v1.0.0",
-			contains: []string{"go install", "v1.0.0", "github.com/sst/sidecar"},
+			contains: []string{"go install", "v1.0.0", "github.com/marcus/sidecar"},
 		},
 		{
 			version:  "v2.1.3",
@@ -92,7 +92,7 @@ func TestCheck_APIErrors(t *testing.T) {
 		{
 			name:       "200 success",
 			statusCode: http.StatusOK,
-			body:       `{"tag_name": "v1.0.0", "html_url": "https://github.com/sst/sidecar/releases/tag/v1.0.0"}`,
+			body:       `{"tag_name": "v1.0.0", "html_url": "https://github.com/marcus/sidecar/releases/tag/v1.0.0"}`,
 			wantErr:    false,
 		},
 	}
@@ -159,7 +159,7 @@ func TestCheckResult(t *testing.T) {
 	result := CheckResult{
 		CurrentVersion: "v1.0.0",
 		LatestVersion:  "v1.2.0",
-		UpdateURL:      "https://github.com/sst/sidecar/releases/tag/v1.2.0",
+		UpdateURL:      "https://github.com/marcus/sidecar/releases/tag/v1.2.0",
 		HasUpdate:      true,
 		Error:          nil,
 	}
@@ -177,7 +177,7 @@ func TestRelease(t *testing.T) {
 	r := Release{
 		TagName:     "v1.0.0",
 		PublishedAt: time.Now(),
-		HTMLURL:     "https://github.com/sst/sidecar/releases/tag/v1.0.0",
+		HTMLURL:     "https://github.com/marcus/sidecar/releases/tag/v1.0.0",
 	}
 
 	if r.TagName != "v1.0.0" {

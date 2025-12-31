@@ -6,9 +6,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/sst/sidecar/internal/palette"
-	"github.com/sst/sidecar/internal/plugins/filebrowser"
-	"github.com/sst/sidecar/internal/version"
+	"github.com/marcus/sidecar/internal/palette"
+	"github.com/marcus/sidecar/internal/plugins/filebrowser"
+	"github.com/marcus/sidecar/internal/version"
 )
 
 // Update handles all messages and returns the updated model and commands.

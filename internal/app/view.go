@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sst/sidecar/internal/keymap"
-	"github.com/sst/sidecar/internal/plugin"
-	"github.com/sst/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/keymap"
+	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 const (
@@ -595,7 +595,7 @@ func (m Model) buildDiagnosticsContent() string {
 	// Show unified update command if any updates available
 	if m.updateAvailable != nil || (m.tdVersionInfo != nil && m.tdVersionInfo.HasUpdate) {
 		b.WriteString("\n  Update:\n")
-		b.WriteString(fmt.Sprintf("  %s\n", styles.Muted.Render("curl -fsSL https://raw.githubusercontent.com/sst/sidecar/main/scripts/setup.sh | bash")))
+		b.WriteString(fmt.Sprintf("  %s\n", styles.Muted.Render("curl -fsSL https://raw.githubusercontent.com/marcus/sidecar/main/scripts/setup.sh | bash")))
 	}
 	b.WriteString("\n")
 

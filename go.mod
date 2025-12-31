@@ -1,4 +1,4 @@
-module github.com/sst/sidecar
+module github.com/marcus/sidecar
 
 go 1.25.5
 

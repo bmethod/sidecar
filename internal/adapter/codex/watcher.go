@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/sst/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/adapter"
 )
 
 // NewWatcher creates a watcher for Codex session changes.

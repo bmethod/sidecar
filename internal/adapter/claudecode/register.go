@@ -1,6 +1,6 @@
 package claudecode
 
-import "github.com/sst/sidecar/internal/adapter"
+import "github.com/marcus/sidecar/internal/adapter"
 
 func init() {
 	adapter.RegisterFactory(func() adapter.Adapter {

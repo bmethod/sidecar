@@ -3,8 +3,8 @@ package plugin
 import (
 	"log/slog"
 
-	"github.com/sst/sidecar/internal/adapter"
-	"github.com/sst/sidecar/internal/event"
+	"github.com/marcus/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/event"
 )
 
 // BindingRegistrar allows plugins to register key bindings dynamically.

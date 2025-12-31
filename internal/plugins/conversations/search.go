@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sst/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/adapter"
 )
 
 // SearchFilters holds multi-dimensional filter criteria.

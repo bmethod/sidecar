@@ -3,7 +3,7 @@ package palette
 import (
 	"testing"
 
-	"github.com/sst/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 func TestLayerName(t *testing.T) {

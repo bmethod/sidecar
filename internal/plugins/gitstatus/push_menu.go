@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sst/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // renderPushMenu renders the push options popup menu.

@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sst/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 func TestNew(t *testing.T) {

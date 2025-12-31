@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sst/sidecar/internal/adapter"
-	"github.com/sst/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // renderNoAdapter renders the view when no adapter is available.

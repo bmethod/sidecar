@@ -68,13 +68,13 @@ Options:
 
 Examples:
   # Interactive install
-  curl -fsSL https://raw.githubusercontent.com/sst/sidecar/main/scripts/setup.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/marcus/sidecar/main/scripts/setup.sh | bash
 
   # Headless install (both tools)
-  curl -fsSL https://raw.githubusercontent.com/sst/sidecar/main/scripts/setup.sh | bash -s -- --yes
+  curl -fsSL https://raw.githubusercontent.com/marcus/sidecar/main/scripts/setup.sh | bash -s -- --yes
 
   # Headless install (sidecar only)
-  curl -fsSL https://raw.githubusercontent.com/sst/sidecar/main/scripts/setup.sh | bash -s -- --yes --sidecar-only
+  curl -fsSL https://raw.githubusercontent.com/marcus/sidecar/main/scripts/setup.sh | bash -s -- --yes --sidecar-only
 EOF
 }
 
@@ -309,7 +309,7 @@ main() {
 
     # Fetch latest versions
     echo "Checking latest versions..."
-    LATEST_SIDECAR=$(get_latest_release "sst/sidecar" || echo "")
+    LATEST_SIDECAR=$(get_latest_release "marcus/sidecar" || echo "")
     if ! $SIDECAR_ONLY; then
         LATEST_TD=$(get_latest_release "marcus/td" || echo "")
     fi
@@ -322,21 +322,21 @@ main() {
     # Go status
     if [[ -n "$GO_VERSION" ]]; then
         if version_gte "$GO_VERSION" "1.21"; then
-            style_success "  Go:      $(printf '\u2713') $GO_VERSION"
+            style_success "  Go:      ✓ $GO_VERSION"
         else
             style_warning "  Go:      ! $GO_VERSION (need 1.21+)"
         fi
     else
-        style_error "  Go:      $(printf '\u2717') not installed"
+        style_error "  Go:      ✗ not installed"
     fi
 
     # td status
     if ! $SIDECAR_ONLY; then
         if [[ -n "$TD_VERSION" ]]; then
             if [[ -n "$LATEST_TD" && "$TD_VERSION" != "$LATEST_TD" ]]; then
-                style_warning "  td:      $(printf '\u2713') $TD_VERSION -> $LATEST_TD available"
+                style_warning "  td:      ✓ $TD_VERSION -> $LATEST_TD available"
             else
-                style_success "  td:      $(printf '\u2713') $TD_VERSION"
+                style_success "  td:      ✓ $TD_VERSION"
             fi
         else
             echo "  td:      - not installed"
@@ -346,9 +346,9 @@ main() {
     # sidecar status
     if [[ -n "$SIDECAR_VERSION" ]]; then
         if [[ -n "$LATEST_SIDECAR" && "$SIDECAR_VERSION" != "$LATEST_SIDECAR" ]]; then
-            style_warning "  sidecar: $(printf '\u2713') $SIDECAR_VERSION -> $LATEST_SIDECAR available"
+            style_warning "  sidecar: ✓ $SIDECAR_VERSION -> $LATEST_SIDECAR available"
         else
-            style_success "  sidecar: $(printf '\u2713') $SIDECAR_VERSION"
+            style_success "  sidecar: ✓ $SIDECAR_VERSION"
         fi
     else
         echo "  sidecar: - not installed"
@@ -393,7 +393,7 @@ main() {
             echo "  brew install go"
             echo ""
             if confirm "Run this command?"; then
-                brew install go
+                spin "Installing Go..." brew install go
                 GO_VERSION=$(get_go_version)
             else
                 echo ""
@@ -453,7 +453,7 @@ main() {
             echo ""
 
             if confirm "Install td?"; then
-                eval "$td_cmd"
+                spin "Installing td..." bash -c "$td_cmd"
                 TD_VERSION=$(get_td_version)
                 style_success "td installed: $TD_VERSION"
             fi
@@ -467,14 +467,14 @@ main() {
         echo ""
         if [[ -z "$SIDECAR_VERSION" ]] || $FORCE_FLAG || [[ "$SIDECAR_VERSION" != "$LATEST_SIDECAR" ]]; then
             local sc_version="${LATEST_SIDECAR:-latest}"
-            local sc_cmd="go install -ldflags \"-X main.Version=${sc_version}\" github.com/sst/sidecar/cmd/sidecar@${sc_version}"
+            local sc_cmd="go install -ldflags \"-X main.Version=${sc_version}\" github.com/marcus/sidecar/cmd/sidecar@${sc_version}"
 
             echo "Will run:"
             echo "  $sc_cmd"
             echo ""
 
             if confirm "Install sidecar?"; then
-                eval "$sc_cmd"
+                spin "Installing sidecar..." bash -c "$sc_cmd"
                 SIDECAR_VERSION=$(get_sidecar_version)
                 style_success "sidecar installed: $SIDECAR_VERSION"
             fi
@@ -493,18 +493,18 @@ main() {
 
     if $install_sidecar; then
         if command -v sidecar &> /dev/null; then
-            style_success "  $(printf '\u2713') sidecar $(get_sidecar_version)"
+            style_success "  ✓ sidecar $(get_sidecar_version)"
         else
-            style_error "  $(printf '\u2717') sidecar not found"
+            style_error "  ✗ sidecar not found"
             all_good=false
         fi
     fi
 
     if $install_td; then
         if command -v td &> /dev/null; then
-            style_success "  $(printf '\u2713') td $(get_td_version)"
+            style_success "  ✓ td $(get_td_version)"
         else
-            style_error "  $(printf '\u2717') td not found"
+            style_error "  ✗ td not found"
             all_good=false
         fi
     fi
@@ -512,7 +512,20 @@ main() {
     echo ""
 
     if $all_good; then
-        echo "Run 'sidecar' in any project directory to start!"
+        echo ""
+        style_success "✓ Setup complete!"
+        echo ""
+        style_header "Getting Started"
+        echo ""
+        if $install_td; then
+            echo "  1. cd into your project directory"
+            echo "  2. Run 'td init' to initialize task tracking"
+            echo "  3. Run 'sidecar' to launch the UI"
+        else
+            echo "  1. cd into your project directory"
+            echo "  2. Run 'sidecar' to launch the UI"
+        fi
+        echo ""
     else
         echo "Some installations may have failed. Check the output above."
         echo "You may need to run 'source $(get_shell_rc)' to update your PATH."

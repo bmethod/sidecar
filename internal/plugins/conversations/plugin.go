@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sst/sidecar/internal/adapter"
-	"github.com/sst/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 const (

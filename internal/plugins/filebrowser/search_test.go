@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/sst/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 func createTestPlugin(t *testing.T, tmpDir string) *Plugin {

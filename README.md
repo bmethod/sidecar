@@ -13,7 +13,7 @@ Sidecar provides a unified terminal interface for viewing Claude Code conversati
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sst/sidecar/main/scripts/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/marcus/sidecar/main/scripts/setup.sh | bash
 ```
 
 Or see [Getting Started](docs/GETTING_STARTED.md) for manual installation.

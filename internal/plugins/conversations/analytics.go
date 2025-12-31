@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sst/sidecar/internal/adapter/claudecode"
-	"github.com/sst/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/adapter/claudecode"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // renderAnalytics renders the global analytics view with scrolling support.
