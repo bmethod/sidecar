@@ -362,7 +362,13 @@ func (p *Plugin) renderTreeNode(node *FileNode, selected bool, maxWidth int) str
 	line := fmt.Sprintf("%s%s%s", indent, styles.FileBrowserIcon.Render(icon), name)
 
 	if selected {
-		return styles.ListItemSelected.Render(line)
+		// Build plain text version for full-width highlight
+		plainLine := indent + icon + displayName
+		// Pad to full width
+		if len(plainLine) < maxWidth {
+			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
+		}
+		return styles.ListItemSelected.Render(plainLine)
 	}
 	return line
 }

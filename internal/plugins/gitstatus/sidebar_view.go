@@ -321,12 +321,16 @@ func (p *Plugin) renderSidebarEntry(entry *FileEntry, selected bool, maxWidth in
 			displayName = folderName[:availableWidth-len(countStr)-4] + "…/"
 		}
 
-		lineStyle := styles.ListItemNormal
 		if selected {
-			lineStyle = styles.ListItemSelected
+			plainCursor := "> "
+			plainLine := fmt.Sprintf("%s%s %s %s %s", plainCursor, string(entry.Status), indicator, displayName, countStr)
+			if len(plainLine) < maxWidth {
+				plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
+			}
+			return styles.ListItemSelected.Render(plainLine)
 		}
 
-		return lineStyle.Render(fmt.Sprintf("%s%s %s %s %s", cursor, status, indicator, displayName, styles.Muted.Render(countStr)))
+		return styles.ListItemNormal.Render(fmt.Sprintf("%s%s %s %s %s", cursor, status, indicator, displayName, styles.Muted.Render(countStr)))
 	}
 
 	// Path - truncate if needed
@@ -336,13 +340,16 @@ func (p *Plugin) renderSidebarEntry(entry *FileEntry, selected bool, maxWidth in
 		path = "…" + path[len(path)-availableWidth+1:]
 	}
 
-	// Compose line
-	lineStyle := styles.ListItemNormal
 	if selected {
-		lineStyle = styles.ListItemSelected
+		plainCursor := "> "
+		plainLine := fmt.Sprintf("%s%s %s", plainCursor, string(entry.Status), path)
+		if len(plainLine) < maxWidth {
+			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
+		}
+		return styles.ListItemSelected.Render(plainLine)
 	}
 
-	return lineStyle.Render(fmt.Sprintf("%s%s %s", cursor, status, path))
+	return styles.ListItemNormal.Render(fmt.Sprintf("%s%s %s", cursor, status, path))
 }
 
 // renderRecentCommits renders the recent commits section in the sidebar.
@@ -414,16 +421,23 @@ func (p *Plugin) renderRecentCommits(currentY *int, maxVisible int) string {
 			msg = msg[:msgWidth-1] + "…"
 		}
 
-		// Compose line with selection styling
-		lineStyle := styles.ListItemNormal
-		if selected {
-			lineStyle = styles.ListItemSelected
-		}
-
 		// Register hit region for this commit with ABSOLUTE index
 		p.mouseHandler.HitMap.AddRect(regionCommit, 1, *currentY, p.sidebarWidth-2, 1, i)
 
-		sb.WriteString(lineStyle.Render(fmt.Sprintf("%s%s%s %s", cursor, indicator, hash, msg)))
+		if selected {
+			plainCursor := "> "
+			plainIndicator := "  "
+			if !commit.Pushed {
+				plainIndicator = "↑ "
+			}
+			plainLine := fmt.Sprintf("%s%s%s %s", plainCursor, plainIndicator, commit.Hash[:7], msg)
+			if len(plainLine) < maxWidth {
+				plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
+			}
+			sb.WriteString(styles.ListItemSelected.Render(plainLine))
+		} else {
+			sb.WriteString(styles.ListItemNormal.Render(fmt.Sprintf("%s%s%s %s", cursor, indicator, hash, msg)))
+		}
 		*currentY++
 		if i < endIdx-1 {
 			sb.WriteString("\n")
@@ -631,13 +645,16 @@ func (p *Plugin) renderCommitPreviewFile(file CommitFile, selected bool, maxWidt
 		path = "…" + path[len(path)-pathWidth+1:]
 	}
 
-	// Compose line
-	lineStyle := styles.ListItemNormal
 	if selected {
-		lineStyle = styles.ListItemSelected
+		plainCursor := "> "
+		plainLine := fmt.Sprintf("%s%s %s", plainCursor, string(file.Status), path)
+		if len(plainLine) < maxWidth {
+			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
+		}
+		return styles.ListItemSelected.Render(plainLine)
 	}
 
-	return lineStyle.Render(fmt.Sprintf("%s%s %s", cursor, status, path))
+	return styles.ListItemNormal.Render(fmt.Sprintf("%s%s %s", cursor, status, path))
 }
 
 // truncateStyledLine truncates a line that may contain ANSI codes to a visual width.

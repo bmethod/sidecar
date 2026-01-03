@@ -86,13 +86,21 @@ func (p *Plugin) renderCommitLine(c *Commit, selected bool) string {
 	// Relative time
 	timeStr := styles.Muted.Render(RelativeTime(c.Date))
 
-	// Compose line
-	lineStyle := styles.ListItemNormal
 	if selected {
-		lineStyle = styles.ListItemSelected
+		plainCursor := "> "
+		plainIndicator := "  "
+		if !c.Pushed {
+			plainIndicator = "↑ "
+		}
+		plainLine := fmt.Sprintf("%s%s%s %s  %s", plainCursor, plainIndicator, c.ShortHash, subject, RelativeTime(c.Date))
+		maxWidth := p.width - 4
+		if len(plainLine) < maxWidth {
+			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
+		}
+		return styles.ListItemSelected.Render(plainLine)
 	}
 
-	return lineStyle.Render(fmt.Sprintf("%s%s%s %s  %s", cursor, pushIndicator, hash, subject, timeStr))
+	return styles.ListItemNormal.Render(fmt.Sprintf("%s%s%s %s  %s", cursor, pushIndicator, hash, subject, timeStr))
 }
 
 // renderCommitDetail renders the commit detail view.
@@ -204,17 +212,25 @@ func (p *Plugin) renderCommitFile(f CommitFile, selected bool) string {
 		stats = fmt.Sprintf(" %s %s", addStr, delStr)
 	}
 
-	// Style
-	lineStyle := styles.ListItemNormal
-	if selected {
-		lineStyle = styles.ListItemSelected
-	}
-
 	// Truncate path if needed
 	maxPathWidth := p.width - 20
 	if len(path) > maxPathWidth && maxPathWidth > 3 {
 		path = "..." + path[len(path)-maxPathWidth+3:]
 	}
 
-	return lineStyle.Render(fmt.Sprintf("%s%s%s", cursor, path, stats))
+	if selected {
+		plainCursor := "> "
+		plainStats := ""
+		if f.Additions > 0 || f.Deletions > 0 {
+			plainStats = fmt.Sprintf(" +%d -%d", f.Additions, f.Deletions)
+		}
+		plainLine := fmt.Sprintf("%s%s%s", plainCursor, path, plainStats)
+		maxWidth := p.width - 4
+		if len(plainLine) < maxWidth {
+			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
+		}
+		return styles.ListItemSelected.Render(plainLine)
+	}
+
+	return styles.ListItemNormal.Render(fmt.Sprintf("%s%s%s", cursor, path, stats))
 }
