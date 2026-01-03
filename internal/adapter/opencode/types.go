@@ -214,20 +214,21 @@ type SessionDiffEntry struct {
 
 // SessionMetadata holds aggregated metadata for adapter.Session mapping.
 type SessionMetadata struct {
-	Path         string
-	SessionID    string
-	ProjectID    string
-	Title        string
-	ParentID     string
-	FirstMsg     time.Time
-	LastMsg      time.Time
-	MsgCount     int
-	TotalTokens  int
-	EstCost      float64
-	PrimaryModel string
-	Additions    int
-	Deletions    int
-	FileCount    int
+	Path             string
+	SessionID        string
+	ProjectID        string
+	Title            string
+	ParentID         string
+	FirstMsg         time.Time
+	LastMsg          time.Time
+	MsgCount         int
+	TotalTokens      int
+	EstCost          float64
+	PrimaryModel     string
+	Additions        int
+	Deletions        int
+	FileCount        int
+	FirstUserMessage string // Content of the first user message (for title fallback)
 }
 
 // ToolInputString extracts a string representation of tool input.

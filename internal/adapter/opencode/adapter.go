@@ -117,8 +117,11 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		// Store in index for Messages() lookup
 		a.sessionIndex[meta.SessionID] = projectID
 
-		// Determine name - use title or short ID
+		// Determine name - use title, first user message, or short ID
 		name := meta.Title
+		if name == "" && meta.FirstUserMessage != "" {
+			name = truncateTitle(meta.FirstUserMessage, 50)
+		}
 		if name == "" {
 			name = shortID(meta.SessionID)
 		}
@@ -394,6 +397,7 @@ func (a *Adapter) parseSessionFile(path, projectID string) (*SessionMetadata, er
 	if entries, err := os.ReadDir(messageDir); err == nil {
 		modelCounts := make(map[string]int)
 		modelTokens := make(map[string]struct{ in, out, cache int })
+		var firstUserMsgTime time.Time
 
 		for _, e := range entries {
 			if !strings.HasSuffix(e.Name(), ".json") {
@@ -411,6 +415,19 @@ func (a *Adapter) parseSessionFile(path, projectID string) (*SessionMetadata, er
 			}
 
 			meta.MsgCount++
+
+			// Extract first user message content for title
+			if msg.Role == "user" {
+				msgTime := msg.Time.CreatedTime()
+				if firstUserMsgTime.IsZero() || msgTime.Before(firstUserMsgTime) {
+					firstUserMsgTime = msgTime
+					// Load parts to get text content
+					content, _, _, _, _ := a.loadParts(msg.ID)
+					if content != "" {
+						meta.FirstUserMessage = content
+					}
+				}
+			}
 
 			if msg.Tokens != nil {
 				meta.TotalTokens += msg.Tokens.Input + msg.Tokens.Output
@@ -574,4 +591,17 @@ func shortID(id string) string {
 		return id[:12]
 	}
 	return id
+}
+
+// truncateTitle truncates text to maxLen, adding "..." if truncated.
+// It also replaces newlines with spaces for display.
+func truncateTitle(s string, maxLen int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.TrimSpace(s)
+
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }

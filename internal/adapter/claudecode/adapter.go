@@ -92,8 +92,14 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			continue
 		}
 
-		// Use slug as name if available, otherwise short ID
-		name := meta.Slug
+		// Use first user message as name, with fallbacks
+		name := ""
+		if meta.FirstUserMessage != "" {
+			name = truncateTitle(meta.FirstUserMessage, 50)
+		}
+		if name == "" && meta.Slug != "" {
+			name = meta.Slug
+		}
 		if name == "" {
 			name = shortID(meta.SessionID)
 		}
@@ -282,6 +288,13 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 		if meta.Slug == "" && raw.Slug != "" {
 			meta.Slug = raw.Slug
 		}
+		// Extract first user message content for title
+		if meta.FirstUserMessage == "" && raw.Type == "user" && raw.Message != nil {
+			content, _, _ := a.parseContent(raw.Message.Content)
+			if content != "" {
+				meta.FirstUserMessage = content
+			}
+		}
 		meta.LastMsg = raw.Timestamp
 		meta.MsgCount++
 
@@ -348,6 +361,19 @@ func shortID(id string) string {
 		return id[:8]
 	}
 	return id
+}
+
+// truncateTitle truncates text to maxLen, adding "..." if truncated.
+// It also replaces newlines with spaces for display.
+func truncateTitle(s string, maxLen int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.TrimSpace(s)
+
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // parseContent extracts text content, tool uses, and thinking blocks from the content field.

@@ -55,13 +55,14 @@ type Thought struct {
 
 // SessionMetadata holds parsed metadata about a session file.
 type SessionMetadata struct {
-	Path         string
-	SessionID    string
-	ProjectHash  string
-	StartTime    time.Time
-	LastUpdated  time.Time
-	MsgCount     int
-	TotalTokens  int
-	EstCost      float64
-	PrimaryModel string
+	Path             string
+	SessionID        string
+	ProjectHash      string
+	StartTime        time.Time
+	LastUpdated      time.Time
+	MsgCount         int
+	TotalTokens      int
+	EstCost          float64
+	PrimaryModel     string
+	FirstUserMessage string // Content of the first user message (for title)
 }

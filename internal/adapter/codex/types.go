@@ -95,11 +95,12 @@ type TurnContextPayload struct {
 
 // SessionMetadata aggregates metadata extracted from a session file.
 type SessionMetadata struct {
-	Path        string
-	SessionID   string
-	CWD         string
-	FirstMsg    time.Time
-	LastMsg     time.Time
-	MsgCount    int
-	TotalTokens int
+	Path             string
+	SessionID        string
+	CWD              string
+	FirstMsg         time.Time
+	LastMsg          time.Time
+	MsgCount         int
+	TotalTokens      int
+	FirstUserMessage string // Content of the first user message (for title)
 }

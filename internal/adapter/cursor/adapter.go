@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -120,9 +121,21 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		// Count messages by traversing blobs
 		msgCount := a.countMessages(dbPath)
 
+		// Get first user message for title
+		firstUserMsg := a.getFirstUserMessage(dbPath)
+
+		// Use first user message as name if meta.Name is empty
+		name := meta.Name
+		if name == "" && firstUserMsg != "" {
+			name = truncateTitle(firstUserMsg, 50)
+		}
+		if name == "" {
+			name = shortID(meta.AgentID)
+		}
+
 		sessions = append(sessions, adapter.Session{
 			ID:           meta.AgentID,
-			Name:         meta.Name,
+			Name:         name,
 			Slug:         shortID(meta.AgentID),
 			AdapterID:    adapterID,
 			AdapterName:  adapterName,
@@ -225,6 +238,20 @@ func (a *Adapter) readSessionMeta(dbPath string) (*SessionMeta, error) {
 func (a *Adapter) countMessages(dbPath string) int {
 	messages, _ := a.parseMessages(dbPath)
 	return len(messages)
+}
+
+// getFirstUserMessage returns the content of the first user message in the session.
+func (a *Adapter) getFirstUserMessage(dbPath string) string {
+	messages, err := a.parseMessages(dbPath)
+	if err != nil {
+		return ""
+	}
+	for _, msg := range messages {
+		if msg.Role == "user" && msg.Content != "" {
+			return msg.Content
+		}
+	}
+	return ""
 }
 
 // findSessionDB finds the store.db path for a given session ID.
@@ -417,4 +444,17 @@ func shortID(id string) string {
 		return id[:8]
 	}
 	return id
+}
+
+// truncateTitle truncates text to maxLen, adding "..." if truncated.
+// It also replaces newlines with spaces for display.
+func truncateTitle(s string, maxLen int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.TrimSpace(s)
+
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }

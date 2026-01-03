@@ -54,14 +54,15 @@ type CursorOpts struct {
 
 // SessionInfo holds parsed session information for display.
 type SessionInfo struct {
-	Path          string    // Path to store.db
-	SessionID     string    // UUID of the session
-	WorkspaceHash string    // Hash of the workspace path
-	Name          string    // Session name from metadata
-	Mode          string    // Agent mode (e.g., "auto-run")
-	Model         string    // Last used model
-	CreatedAt     time.Time // When the session was created
-	UpdatedAt     time.Time // Estimated from file mtime or blob analysis
-	MessageCount  int       // Number of user/assistant messages
-	TotalTokens   int       // Estimated token count (if available)
+	Path             string    // Path to store.db
+	SessionID        string    // UUID of the session
+	WorkspaceHash    string    // Hash of the workspace path
+	Name             string    // Session name from metadata
+	Mode             string    // Agent mode (e.g., "auto-run")
+	Model            string    // Last used model
+	CreatedAt        time.Time // When the session was created
+	UpdatedAt        time.Time // Estimated from file mtime or blob analysis
+	MessageCount     int       // Number of user/assistant messages
+	TotalTokens      int       // Estimated token count (if available)
+	FirstUserMessage string    // Content of the first user message (for title)
 }

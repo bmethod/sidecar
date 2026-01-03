@@ -62,16 +62,17 @@ type ToolResult struct {
 
 // SessionMetadata holds metadata about a session file.
 type SessionMetadata struct {
-	Path         string
-	SessionID    string
-	Slug         string // Short slug from summary line (e.g., "ses_abc123")
-	CWD          string
-	Version      string
-	GitBranch    string
-	FirstMsg     time.Time
-	LastMsg      time.Time
-	MsgCount     int
-	TotalTokens  int     // Sum of input + output tokens
-	EstCost      float64 // Estimated cost based on model usage
-	PrimaryModel string  // Most used model in session
+	Path             string
+	SessionID        string
+	Slug             string // Short slug from summary line (e.g., "ses_abc123")
+	CWD              string
+	Version          string
+	GitBranch        string
+	FirstMsg         time.Time
+	LastMsg          time.Time
+	MsgCount         int
+	TotalTokens      int     // Sum of input + output tokens
+	EstCost          float64 // Estimated cost based on model usage
+	PrimaryModel     string  // Most used model in session
+	FirstUserMessage string  // Content of the first user message (for title)
 }

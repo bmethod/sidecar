@@ -403,9 +403,9 @@ func TestSlugExtraction_SessionsIntegration(t *testing.T) {
 			if s.Slug != "implement-feature-xyz" {
 				t.Errorf("expected slug 'implement-feature-xyz', got %q", s.Slug)
 			}
-			// Name should be the slug when present
-			if s.Name != "implement-feature-xyz" {
-				t.Errorf("expected name 'implement-feature-xyz', got %q", s.Name)
+			// Name should be first user message, not slug
+			if s.Name != "Hello" {
+				t.Errorf("expected name 'Hello' (first user message), got %q", s.Name)
 			}
 		}
 		if s.ID == "test-session-001" {
@@ -413,9 +413,9 @@ func TestSlugExtraction_SessionsIntegration(t *testing.T) {
 			if s.Slug != "" {
 				t.Errorf("expected empty slug, got %q", s.Slug)
 			}
-			// Name should be short ID when no slug
-			if s.Name != "test-ses" {
-				t.Errorf("expected name 'test-ses' (shortID), got %q", s.Name)
+			// Name should be first user message
+			if s.Name != "Hello, can you help me?" {
+				t.Errorf("expected name 'Hello, can you help me?' (first user message), got %q", s.Name)
 			}
 		}
 	}
