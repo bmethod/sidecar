@@ -38,7 +38,7 @@ func TestIsCacheValid(t *testing.T) {
 			entry: &CacheEntry{
 				LatestVersion:  "v1.1.0",
 				CurrentVersion: "v1.0.0",
-				CheckedAt:      now.Add(-7 * time.Hour), // older than 6h TTL
+				CheckedAt:      now.Add(-4 * time.Hour), // older than 3h TTL
 				HasUpdate:      true,
 			},
 			currentVersion: "v1.0.0",
@@ -71,7 +71,7 @@ func TestIsCacheValid(t *testing.T) {
 			entry: &CacheEntry{
 				LatestVersion:  "v1.1.0",
 				CurrentVersion: "v1.0.0",
-				CheckedAt:      now.Add(-6*time.Hour + time.Minute), // just under TTL
+				CheckedAt:      now.Add(-3*time.Hour + time.Minute), // just under TTL
 				HasUpdate:      true,
 			},
 			currentVersion: "v1.0.0",

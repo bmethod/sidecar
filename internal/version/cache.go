@@ -10,7 +10,7 @@ import (
 const (
 	cacheFile   = "version_cache.json"
 	tdCacheFile = "td_version_cache.json"
-	cacheTTL    = 6 * time.Hour
+	cacheTTL    = 3 * time.Hour
 )
 
 // CacheEntry stores cached version check result.
