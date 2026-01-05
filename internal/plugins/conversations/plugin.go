@@ -2,6 +2,7 @@ package conversations
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -118,14 +119,22 @@ type Plugin struct {
 	filterMode   bool
 	filters      SearchFilters
 	filterActive bool // true when any filter is active
+
+	// Markdown rendering
+	contentRenderer *GlamourRenderer
 }
 
 // New creates a new conversations plugin.
 func New() *Plugin {
+	renderer, err := NewGlamourRenderer()
+	if err != nil {
+		log.Printf("warn: glamour init failed: %v", err)
+	}
 	return &Plugin{
 		pageSize:         defaultPageSize,
 		expandedThinking: make(map[string]bool),
 		mouseHandler:     mouse.NewHandler(),
+		contentRenderer:  renderer,
 	}
 }
 
@@ -137,6 +146,14 @@ func (p *Plugin) Name() string { return pluginName }
 
 // Icon returns the plugin icon character.
 func (p *Plugin) Icon() string { return pluginIcon }
+
+// renderContent renders markdown content to styled lines, falling back to plain text.
+func (p *Plugin) renderContent(content string, width int) []string {
+	if p.contentRenderer != nil {
+		return p.contentRenderer.RenderContent(content, width)
+	}
+	return wrapText(content, width)
+}
 
 // Init initializes the plugin with context.
 func (p *Plugin) Init(ctx *plugin.Context) error {

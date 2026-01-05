@@ -1577,10 +1577,10 @@ func (p *Plugin) renderDetailPaneContent(contentWidth, height int) string {
 
 		// Main content
 		if msg.Content != "" {
-			// Wrap content
-			msgLines := wrapText(msg.Content, contentWidth-2)
+			// Render markdown content
+			msgLines := p.renderContent(msg.Content, contentWidth-2)
 			for _, line := range msgLines {
-				contentLines = append(contentLines, styles.Body.Render(line))
+				contentLines = append(contentLines, line) // Glamour already styled
 			}
 			contentLines = append(contentLines, "")
 		}
@@ -1972,10 +1972,10 @@ func (p *Plugin) renderMessageDetail() string {
 		if msg.Content != "" {
 			contentLines = append(contentLines, styles.PanelHeader.Render(" Content"))
 			contentLines = append(contentLines, styles.Muted.Render(strings.Repeat("─", p.width-4)))
-			// Wrap content
-			msgLines := wrapText(msg.Content, p.width-4)
+			// Render markdown content
+			msgLines := p.renderContent(msg.Content, p.width-4)
 			for _, line := range msgLines {
-				contentLines = append(contentLines, " "+styles.Body.Render(line))
+				contentLines = append(contentLines, " "+line)
 			}
 			contentLines = append(contentLines, "")
 		}
