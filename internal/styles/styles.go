@@ -65,7 +65,7 @@ var (
 		Foreground(TextPrimary)
 
 	Subtitle = lipgloss.NewStyle().
-			Foreground(TextSecondary) // Matches inactive tab text for consistency
+			Foreground(lipgloss.Color("#E5E7EB")) // Very light gray for repo name visibility
 
 	Body = lipgloss.NewStyle().
 		Foreground(TextPrimary)
@@ -276,9 +276,7 @@ var (
 		Background(BgSecondary)
 
 	Header = lipgloss.NewStyle().
-		Foreground(TextPrimary).
-		Background(BgSecondary).
-		Bold(true)
+		Background(BgSecondary)
 )
 
 // Modal styles

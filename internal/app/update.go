@@ -113,13 +113,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case IntroTickMsg:
-		if m.intro.Active && !m.intro.Done {
+		if m.intro.Active {
 			m.intro.Update(16 * time.Millisecond)
-			if m.intro.Done {
-				// Animation finished - trigger a refresh to ensure final state is rendered
-				return m, Refresh()
+			// Keep ticking until logo done AND repo name fully faded in
+			if !m.intro.Done || m.intro.RepoOpacity < 1.0 {
+				return m, IntroTick()
 			}
-			return m, IntroTick()
+			// All animations complete
+			return m, Refresh()
 		}
 		return m, nil
 

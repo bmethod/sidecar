@@ -235,19 +235,51 @@ func (m IntroModel) RepoNameView() string {
 		return ""
 	}
 
-	// Interpolate color from background to target based on opacity
-	// Background: #1F2937 (header bg), Target: #9CA3AF (TextSecondary, matches tab text)
+	// Background color for fade-in interpolation
 	bgColor := hexToRGB("#1F2937")
-	targetColor := hexToRGB("#9CA3AF")
 
-	currentColor := RGB{
-		R: bgColor.R + (targetColor.R-bgColor.R)*m.RepoOpacity,
-		G: bgColor.G + (targetColor.G-bgColor.G)*m.RepoOpacity,
-		B: bgColor.B + (targetColor.B-bgColor.B)*m.RepoOpacity,
+	// Pink gradient: light pink -> darker pink
+	lightPink := hexToRGB("#F9A8D4")
+	darkPink := hexToRGB("#DB2777")
+
+	// Render " / " prefix in a neutral muted color
+	prefixTarget := hexToRGB("#9CA3AF")
+	prefixColor := RGB{
+		R: bgColor.R + (prefixTarget.R-bgColor.R)*m.RepoOpacity,
+		G: bgColor.G + (prefixTarget.G-bgColor.G)*m.RepoOpacity,
+		B: bgColor.B + (prefixTarget.B-bgColor.B)*m.RepoOpacity,
+	}
+	prefixStyle := lipgloss.NewStyle().Foreground(prefixColor.toLipgloss())
+	result := prefixStyle.Render(" / ")
+
+	// Render each character of repo name with gradient
+	runes := []rune(m.RepoName)
+	for i, r := range runes {
+		// Calculate gradient position (0.0 = start/light, 1.0 = end/dark)
+		var t float64
+		if len(runes) > 1 {
+			t = float64(i) / float64(len(runes)-1)
+		}
+
+		// Interpolate between light and dark pink
+		targetColor := RGB{
+			R: lightPink.R + t*(darkPink.R-lightPink.R),
+			G: lightPink.G + t*(darkPink.G-lightPink.G),
+			B: lightPink.B + t*(darkPink.B-lightPink.B),
+		}
+
+		// Apply fade-in opacity
+		currentColor := RGB{
+			R: bgColor.R + (targetColor.R-bgColor.R)*m.RepoOpacity,
+			G: bgColor.G + (targetColor.G-bgColor.G)*m.RepoOpacity,
+			B: bgColor.B + (targetColor.B-bgColor.B)*m.RepoOpacity,
+		}
+
+		style := lipgloss.NewStyle().Foreground(currentColor.toLipgloss())
+		result += style.Render(string(r))
 	}
 
-	style := lipgloss.NewStyle().Foreground(currentColor.toLipgloss())
-	return style.Render(" / " + m.RepoName)
+	return result
 }
 
 // IntroTickMsg is sent to update the animation frame.
