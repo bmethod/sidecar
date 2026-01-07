@@ -92,6 +92,11 @@ type (
 		Src string
 		Dst string
 	}
+	// GitInfoMsg contains git status for a file.
+	GitInfoMsg struct {
+		Status     string
+		LastCommit string
+	}
 )
 
 // ContentMatch represents a match position within file content.
@@ -166,6 +171,11 @@ type Plugin struct {
 	// Project-wide search state (ctrl+s)
 	projectSearchMode  bool
 	projectSearchState *ProjectSearchState
+
+	// Info modal state
+	infoMode      bool
+	gitStatus     string
+	gitLastCommit string
 
 	// File operation state (move/rename/create/delete)
 	fileOpMode          FileOpMode
@@ -895,6 +905,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Refresh after paste
 		return p, p.refresh()
 
+	case GitInfoMsg:
+		p.gitStatus = msg.Status
+		p.gitLastCommit = msg.LastCommit
+		return p, nil
+
 	case ProjectSearchResultsMsg:
 		if p.projectSearchState != nil {
 			p.projectSearchState.IsSearching = false
@@ -939,7 +954,12 @@ func (p *Plugin) handleKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		return p.handleQuickOpenKey(msg)
 	}
 
-	// Handle file operation mode (move/rename input)
+	// Handle info modal
+	if p.infoMode {
+		return p.handleInfoKey(msg)
+	}
+
+	// Handle file operation mode (move/rename/create/delete)
 	if p.fileOpMode != FileOpNone {
 		return p.handleFileOpKey(msg)
 	}
@@ -1078,6 +1098,16 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		node := p.tree.GetNode(p.treeCursor)
 		if node != nil {
 			return p, p.revealInFileManager(node.Path)
+		}
+
+	case "i":
+		// Show file info
+		node := p.tree.GetNode(p.treeCursor)
+		if node != nil {
+			p.infoMode = true
+			p.gitStatus = "Loading..."
+			p.gitLastCommit = "Loading..."
+			return p, p.fetchGitInfo(node.Path)
 		}
 
 	case "r":
@@ -1280,6 +1310,15 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 			return p, p.revealInFileManager(p.previewFile)
 		}
 
+	case "i":
+		// Show file info
+		if p.previewFile != "" {
+			p.infoMode = true
+			p.gitStatus = "Loading..."
+			p.gitLastCommit = "Loading..."
+			return p, p.fetchGitInfo(p.previewFile)
+		}
+
 	case "y":
 		// Copy selected text to clipboard, or entire file contents if no selection
 		if p.hasTextSelection() {
@@ -1377,6 +1416,16 @@ func (p *Plugin) handleFileOpKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.fileOpError = "" // Clear error on input change
 		return p, cmd
 	}
+}
+
+// handleInfoKey handles key input during info modal mode.
+func (p *Plugin) handleInfoKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "esc", "q", "i":
+		p.infoMode = false
+	}
+	return p, nil
 }
 
 // handleContentSearchKey handles key input during content search mode.
@@ -2190,6 +2239,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		// Tree pane commands
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 1},
 		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 2},
+		{ID: "info", Name: "Info", Description: "Show file info", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 2},
 		{ID: "search", Name: "Filter", Description: "Filter files by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 3},
 		{ID: "create-file", Name: "New", Description: "Create new file", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
 		{ID: "create-dir", Name: "Mkdir", Description: "Create new directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
@@ -2204,6 +2254,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		// Preview pane commands
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 1},
 		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 2},
+		{ID: "info", Name: "Info", Description: "Show file info", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 2},
 		{ID: "search-content", Name: "Search", Description: "Search file content", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 3},
 		{ID: "toggle-markdown", Name: "Render", Description: "Toggle markdown rendering", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 4},
 		{ID: "back", Name: "Back", Description: "Return to file tree", Category: plugin.CategoryNavigation, Context: "file-browser-preview", Priority: 5},
@@ -2236,6 +2287,9 @@ func (p *Plugin) FocusContext() string {
 	}
 	if p.quickOpenMode {
 		return "file-browser-quick-open"
+	}
+	if p.infoMode {
+		return "file-browser-info"
 	}
 	if p.fileOpMode != FileOpNone {
 		return "file-browser-file-op"

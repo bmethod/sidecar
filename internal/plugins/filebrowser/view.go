@@ -88,6 +88,13 @@ func (p *Plugin) renderView() string {
 		return ui.OverlayModal(background, modal, p.width, p.height)
 	}
 
+	// Info modal is a full overlay - render modal over dimmed background
+	if p.infoMode {
+		background := p.renderNormalPanes()
+		modal := p.renderInfoModalContent()
+		return ui.OverlayModal(background, modal, p.width, p.height)
+	}
+
 	return p.renderNormalPanes()
 }
 

@@ -158,12 +158,14 @@ func DefaultBindings() []Binding {
 		{Key: "r", Command: "rename", Context: "file-browser-tree"},
 		{Key: "m", Command: "move", Context: "file-browser-tree"},
 		{Key: "R", Command: "reveal", Context: "file-browser-tree"},
+		{Key: "i", Command: "info", Context: "file-browser-tree"},
 
 		// File browser preview context
 		{Key: "/", Command: "search-content", Context: "file-browser-preview"},
 		{Key: "ctrl+p", Command: "quick-open", Context: "file-browser-preview"},
 		{Key: "ctrl+s", Command: "project-search", Context: "file-browser-preview"},
 		{Key: "R", Command: "reveal", Context: "file-browser-preview"},
+		{Key: "i", Command: "info", Context: "file-browser-preview"},
 		{Key: "m", Command: "toggle-markdown", Context: "file-browser-preview"},
 		{Key: "esc", Command: "back", Context: "file-browser-preview"},
 		{Key: "h", Command: "back", Context: "file-browser-preview"},
