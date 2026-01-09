@@ -406,7 +406,12 @@ func (p *Plugin) renderRecentCommits(currentY *int, maxVisible int) string {
 	if p.showCommitGraph {
 		header += " " + styles.Muted.Render("[graph]")
 	}
-	sb.WriteString(styles.Title.Render(header))
+	headerLine := styles.Title.Render(header)
+	headerWidth := p.sidebarWidth - 4
+	if headerWidth > 0 {
+		headerLine = truncateStyledLine(headerLine, headerWidth)
+	}
+	sb.WriteString(headerLine)
 	sb.WriteString("\n")
 	*currentY++
 

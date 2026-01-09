@@ -20,6 +20,7 @@ Best practices:
 - Treat `visibleHeight` as the post-header content height. Do not subtract header lines again later.
 - Track every line the sidebar renders (headers, blank lines, separators, status lines, list rows).
 - If a line is rendered, increment the local `currentY` so hit regions line up.
+- Truncate headers to the sidebar width to prevent line wrapping from stealing rows.
 
 Typical layout flow:
 
@@ -71,6 +72,7 @@ Avoid this by:
 - Not double-counting panel headers or borders.
 - Clamping `scrollOff` to `len(items) - visibleCount` (minimum 0).
 - Loading more data when the list is shorter than the visible window (and more data exists).
+- Letting header text wrap into multiple lines (truncate instead).
 
 ## Mouse Hit Regions
 
