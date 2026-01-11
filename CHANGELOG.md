@@ -1,6 +1,17 @@
 # Changelog
 
 All notable changes to sidecar are documented here.
+
+## [v0.13.2] - 2026-01-10
+
+### Improvements
+- Conversations plugin performance improvements
+- Modal button hover/click behavior refined
+- Modals now have more uniform styling
+
+### Dependencies
+- Updated embedded td to v0.9.0 (from v0.7.0)
+
 ## [v0.13.1] - 2026-01-10
 
 ### Bug Fixes

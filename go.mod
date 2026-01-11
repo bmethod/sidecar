@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/atotto/clipboard v0.1.4
+	github.com/blacktop/go-termimg v0.1.24
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/charmbracelet/bubbles v0.21.1-0.20250623103423-23b8fd6302d7
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -12,7 +13,8 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/charmbracelet/x/ansi v0.11.3
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/marcus/td v0.7.0
+	github.com/marcus/td v0.9.0
+	github.com/mattn/go-runewidth v0.0.19
 	github.com/mattn/go-sqlite3 v1.14.32
 	modernc.org/sqlite v1.41.0
 )
@@ -20,7 +22,6 @@ require (
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
-	github.com/blacktop/go-termimg v0.1.24 // indirect
 	github.com/catppuccin/go v0.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/huh v0.8.0 // indirect
@@ -44,7 +45,6 @@ require (
 	github.com/makeworld-the-better-one/dither/v2 v2.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
-	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/mattn/go-sixel v0.0.5 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
