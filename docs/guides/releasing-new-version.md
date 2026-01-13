@@ -8,6 +8,7 @@ Guide for creating new sidecar releases.
 - All tests passing (`go test ./...`)
 - GitHub CLI authenticated (`gh auth status`)
 - **No `replace` directives in go.mod** (`grep replace go.mod` should be empty)
+- **Beware of go.work**: A parent `go.work` file can silently use local dependencies instead of published versions. Always use `GOWORK=off` when updating dependencies and testing builds.
 
 ## Release Process
 
@@ -28,8 +29,8 @@ git tag -l | sort -V | tail -1
 **Critical**: Sidecar embeds td as a Go module. The `td` version shown in diagnostics comes from the standalone binary, but the actual functionality uses the embedded version from go.mod. Always update to latest td before releasing:
 
 ```bash
-go get github.com/marcus/td@latest
-go mod tidy
+GOWORK=off go get github.com/marcus/td@latest
+GOWORK=off go mod tidy
 ```
 
 ### 3. Verify go.mod
@@ -39,7 +40,16 @@ go mod tidy
 grep replace go.mod && echo "ERROR: Remove replace directives before releasing!" && exit 1
 ```
 
-### 4. Update CHANGELOG.md
+### 4. Verify Build Without go.work
+
+**Critical**: Test that the build works without go.work to catch missing published dependencies:
+```bash
+GOWORK=off go build ./...
+```
+
+If this fails with "undefined" errors, the required dependency version hasn't been published yet. Publish the dependency first, then update go.mod.
+
+### 5. Update CHANGELOG.md
 
 Add an entry for the new version at the top of `CHANGELOG.md`:
 
@@ -62,19 +72,19 @@ git add CHANGELOG.md
 git commit -m "docs: Update changelog for vX.Y.Z"
 ```
 
-### 5. Create Tag
+### 6. Create Tag
 
 ```bash
 git tag vX.Y.Z -m "Brief description of release"
 ```
 
-### 6. Push Tag
+### 7. Push Tag
 
 ```bash
 git push origin main && git push origin vX.Y.Z
 ```
 
-### 7. Create GitHub Release
+### 8. Create GitHub Release
 
 ```bash
 gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(cat <<'EOF'
@@ -96,11 +106,14 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes ""
 # Then edit on GitHub
 ```
 
-### 8. Verify
+### 9. Verify
 
 ```bash
 # Check release exists
 gh release view vX.Y.Z
+
+# Test that users can install (critical!)
+GOWORK=off go install github.com/marcus/sidecar/cmd/sidecar@vX.Y.Z
 
 # Test update notification
 go build -ldflags "-X main.Version=v0.0.1" -o /tmp/sidecar-test ./cmd/sidecar
@@ -139,10 +152,12 @@ Dev versions (`devel`, `devel+hash`) skip the check.
 
 - [ ] Tests pass
 - [ ] Working tree clean
-- [ ] **td dependency updated to latest** (`go get github.com/marcus/td@latest`)
+- [ ] **td dependency updated to latest** (`GOWORK=off go get github.com/marcus/td@latest`)
 - [ ] **No `replace` directives in go.mod**
+- [ ] **Build works without go.work** (`GOWORK=off go build ./...`)
 - [ ] **CHANGELOG.md updated** with new version entry
 - [ ] Version number follows semver
 - [ ] Tag created and pushed
 - [ ] GitHub release created with notes
+- [ ] **Installation verified** (`GOWORK=off go install ...@vX.Y.Z`)
 - [ ] Update notification verified
