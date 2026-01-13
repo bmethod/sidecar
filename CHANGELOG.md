@@ -2,6 +2,12 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.14.1] - 2026-01-13
+
+### Bug Fixes
+- Fixed border rendering issues in conversations plugin
+- Improved gradient border rendering in td integration
+
 ## [v0.14.0] - 2026-01-13
 
 ### Features
