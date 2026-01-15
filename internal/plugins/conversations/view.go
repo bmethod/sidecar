@@ -202,10 +202,11 @@ func adapterAbbrev(session adapter.Session) string {
 		if name == "" {
 			return ""
 		}
-		if len(name) <= 2 {
+		runes := []rune(name)
+		if len(runes) <= 2 {
 			return strings.ToUpper(name)
 		}
-		return strings.ToUpper(name[:2])
+		return strings.ToUpper(string(runes[:2]))
 	}
 }
 
@@ -1674,9 +1675,10 @@ func (p *Plugin) renderCompactMessage(msg adapter.Message, msgIndex int, maxWidt
 	// Calculate if we need to truncate role
 	role := msg.Role
 	// Account for: cursor(2) + [](2) + ts(5) + space(1) + role + tokens
-	usedWidth := 2 + 2 + len(ts) + 1 + len(role) + len(tokens)
-	if usedWidth > maxWidth && len(role) > 4 {
-		role = role[:4]
+	roleRunes := []rune(role)
+	usedWidth := 2 + 2 + len(ts) + 1 + len(roleRunes) + len(tokens)
+	if usedWidth > maxWidth && len(roleRunes) > 4 {
+		role = string(roleRunes[:4])
 	}
 
 	// Build styled header
