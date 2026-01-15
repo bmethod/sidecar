@@ -336,7 +336,7 @@ func (p *Plugin) renderPreviewContent(width, height int) string {
 	// Hide tabs when no worktree is selected - show tmux guide instead
 	wt := p.selectedWorktree()
 	if wt == nil {
-		return p.renderTmuxGuide(width, height)
+		return truncateAllLines(p.renderTmuxGuide(width, height), width)
 	}
 
 	// Tab header
