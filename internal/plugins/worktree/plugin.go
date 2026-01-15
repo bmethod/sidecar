@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/state"
 )
 
 const (
@@ -232,6 +233,11 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		ctx.Keymap.RegisterPluginBinding("up", "cursor-up", "worktree-agent-choice")
 	}
 
+	// Load saved sidebar width
+	if savedWidth := state.GetWorktreeSidebarWidth(); savedWidth > 0 {
+		p.sidebarWidth = savedWidth
+	}
+
 	return nil
 }
 
@@ -441,6 +447,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if msg.Err == nil {
 			if wt := p.findWorktree(msg.WorktreeName); wt != nil {
 				wt.TaskID = msg.TaskID
+				// Load task details for the newly linked task
+				if msg.TaskID != "" {
+					cmds = append(cmds, p.loadTaskDetails(msg.TaskID))
+				}
 			}
 		}
 
@@ -1508,7 +1518,8 @@ func (p *Plugin) handleMouseDrag(action mouse.MouseAction) tea.Cmd {
 
 // handleMouseDragEnd handles the end of a drag operation.
 func (p *Plugin) handleMouseDragEnd() tea.Cmd {
-	// Could persist sidebar width to state here
+	// Persist sidebar width
+	_ = state.SetWorktreeSidebarWidth(p.sidebarWidth)
 	return nil
 }
 

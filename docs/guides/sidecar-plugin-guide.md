@@ -60,6 +60,13 @@ A practical, code-oriented guide for building first-class Sidecar plugins. Use t
 - Treat tabs as layout-affecting: expand `\t` to spaces (8-col stops) before any width checks or truncation, or "blank" lines can wrap.
 - Use ANSI-aware width/truncation helpers (`ansi.Truncate`, `lipgloss.Width`) when content can contain escape codes.
 
+## Persisting user preferences
+- Use `internal/state` to persist layout preferences (pane widths, view modes) across restarts.
+- Add a field to `state.State` struct plus getter/setter functions following the existing pattern.
+- Load saved values in `Init()`: `if saved := state.GetMyPaneWidth(); saved > 0 { p.paneWidth = saved }`.
+- Save on user action (e.g., drag end): `_ = state.SetMyPaneWidth(p.paneWidth)`.
+- See `WorktreeSidebarWidth`, `GitStatusSidebarWidth` for examples.
+
 ## Watchers and goroutines
 - Start watchers in `Start()` via a `tea.Cmd` that spawns the goroutine and returns a typed `Msg` on events.
 - Store handles (e.g., `watcher *Watcher`) on the plugin struct and close them in `Stop()`; guard with `sync.Once`/flags.

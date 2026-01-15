@@ -15,6 +15,7 @@ type State struct {
 	FileBrowserTreeWidth   int `json:"fileBrowserTreeWidth,omitempty"`
 	GitStatusSidebarWidth  int `json:"gitStatusSidebarWidth,omitempty"`
 	ConversationsSideWidth int `json:"conversationsSideWidth,omitempty"`
+	WorktreeSidebarWidth   int `json:"worktreeSidebarWidth,omitempty"`
 
 	// Plugin-specific state (keyed by working directory path)
 	FileBrowser  map[string]FileBrowserState `json:"fileBrowser,omitempty"`
@@ -180,6 +181,28 @@ func SetConversationsSideWidth(width int) error {
 		current = &State{}
 	}
 	current.ConversationsSideWidth = width
+	mu.Unlock()
+	return Save()
+}
+
+// GetWorktreeSidebarWidth returns the saved worktree sidebar width.
+// Returns 0 if no preference is saved (use default).
+func GetWorktreeSidebarWidth() int {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return 0
+	}
+	return current.WorktreeSidebarWidth
+}
+
+// SetWorktreeSidebarWidth saves the worktree sidebar width.
+func SetWorktreeSidebarWidth(width int) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	current.WorktreeSidebarWidth = width
 	mu.Unlock()
 	return Save()
 }
