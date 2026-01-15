@@ -345,7 +345,7 @@ func TestBuildAgentCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			wt := &Worktree{TaskID: tt.taskID}
-			result := p.buildAgentCommand(tt.agentType, wt, tt.skipPerms)
+			result := p.buildAgentCommand(tt.agentType, wt, tt.skipPerms, nil)
 
 			// Check base command
 			baseCmd := getAgentCommand(tt.agentType)
@@ -399,7 +399,7 @@ func TestBuildAgentCommandSyntax(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			wt := &Worktree{TaskID: ""} // No task context
-			result := p.buildAgentCommand(tt.agentType, wt, tt.skipPerms)
+			result := p.buildAgentCommand(tt.agentType, wt, tt.skipPerms, nil)
 			if result != tt.expected {
 				t.Errorf("buildAgentCommand(%s, skipPerms=%v) = %q, want %q",
 					tt.agentType, tt.skipPerms, result, tt.expected)

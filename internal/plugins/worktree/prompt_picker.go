@@ -1,0 +1,218 @@
+package worktree
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// PromptPicker is a modal for selecting a prompt template.
+type PromptPicker struct {
+	prompts     []Prompt        // all available prompts
+	filtered    []Prompt        // filtered by query
+	filterInput textinput.Model // filter text input
+	selectedIdx int             // highlighted row (0-based into filtered, -1 = none option)
+	width       int
+	height      int
+}
+
+// PromptSelectedMsg is sent when a prompt is selected.
+type PromptSelectedMsg struct {
+	Prompt *Prompt // nil means "none" was selected
+}
+
+// PromptCancelledMsg is sent when the picker is cancelled.
+type PromptCancelledMsg struct{}
+
+// NewPromptPicker creates a new prompt picker.
+func NewPromptPicker(prompts []Prompt, width, height int) *PromptPicker {
+	ti := textinput.New()
+	ti.Placeholder = "Type to filter..."
+	ti.Prompt = ""
+	ti.Width = 30
+
+	pp := &PromptPicker{
+		prompts:     prompts,
+		filtered:    prompts,
+		filterInput: ti,
+		selectedIdx: -1, // Start on "none" option
+		width:       width,
+		height:      height,
+	}
+	return pp
+}
+
+// Update handles input for the prompt picker.
+func (pp *PromptPicker) Update(msg tea.Msg) (*PromptPicker, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc", "q":
+			return pp, func() tea.Msg { return PromptCancelledMsg{} }
+
+		case "enter":
+			if pp.selectedIdx < 0 {
+				// "None" selected
+				return pp, func() tea.Msg { return PromptSelectedMsg{Prompt: nil} }
+			}
+			if pp.selectedIdx < len(pp.filtered) {
+				prompt := pp.filtered[pp.selectedIdx]
+				return pp, func() tea.Msg { return PromptSelectedMsg{Prompt: &prompt} }
+			}
+			return pp, nil
+
+		case "up", "k":
+			if pp.selectedIdx > -1 {
+				pp.selectedIdx--
+			}
+			return pp, nil
+
+		case "down", "j":
+			if pp.selectedIdx < len(pp.filtered)-1 {
+				pp.selectedIdx++
+			}
+			return pp, nil
+
+		case "home", "g":
+			pp.selectedIdx = -1
+			return pp, nil
+
+		case "end", "G":
+			if len(pp.filtered) > 0 {
+				pp.selectedIdx = len(pp.filtered) - 1
+			}
+			return pp, nil
+
+		default:
+			// Handle filter input
+			var cmd tea.Cmd
+			pp.filterInput, cmd = pp.filterInput.Update(msg)
+			pp.applyFilter()
+			return pp, cmd
+		}
+	}
+	return pp, nil
+}
+
+// applyFilter filters prompts based on the current filter input.
+func (pp *PromptPicker) applyFilter() {
+	query := strings.ToLower(pp.filterInput.Value())
+	if query == "" {
+		pp.filtered = pp.prompts
+	} else {
+		pp.filtered = make([]Prompt, 0)
+		for _, p := range pp.prompts {
+			if strings.Contains(strings.ToLower(p.Name), query) ||
+				strings.Contains(strings.ToLower(p.Body), query) {
+				pp.filtered = append(pp.filtered, p)
+			}
+		}
+	}
+	// Reset selection if out of bounds
+	if pp.selectedIdx >= len(pp.filtered) {
+		pp.selectedIdx = len(pp.filtered) - 1
+	}
+}
+
+// View renders the prompt picker modal.
+func (pp *PromptPicker) View() string {
+	var sb strings.Builder
+
+	// Header
+	headerStyle := lipgloss.NewStyle().Bold(true)
+	sb.WriteString(headerStyle.Render("Select Prompt"))
+	sb.WriteString(strings.Repeat(" ", max(0, pp.width-30)))
+	sb.WriteString(dimText("Esc to cancel"))
+	sb.WriteString("\n\n")
+
+	// Filter input
+	sb.WriteString("Filter: ")
+	filterStyle := inputStyle.Width(30)
+	sb.WriteString(filterStyle.Render(pp.filterInput.View()))
+	sb.WriteString("\n\n")
+
+	// Column headers
+	colStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	sb.WriteString(colStyle.Render(fmt.Sprintf("  %-24s %-7s %-10s %s", "Prompt", "Scope", "Ticket", "Preview")))
+	sb.WriteString("\n")
+	sb.WriteString(colStyle.Render(strings.Repeat("─", min(pp.width-6, 70))))
+	sb.WriteString("\n")
+
+	// "None" option
+	nonePrefix := "  "
+	if pp.selectedIdx == -1 {
+		nonePrefix = "▶ "
+	}
+	noneLine := fmt.Sprintf("%s%-24s %-7s %-10s %s", nonePrefix, "(none)", "", "", "No prompt template")
+	if pp.selectedIdx == -1 {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(noneLine))
+	} else {
+		sb.WriteString(dimText(noneLine))
+	}
+	sb.WriteString("\n")
+
+	// Prompt rows
+	maxVisible := min(10, len(pp.filtered))
+	for i := 0; i < maxVisible; i++ {
+		p := pp.filtered[i]
+
+		prefix := "  "
+		if i == pp.selectedIdx {
+			prefix = "▶ "
+		}
+
+		// Scope indicator
+		scope := "[G]"
+		if p.Source == "project" {
+			scope = "[P]"
+		}
+
+		// Ticket mode
+		ticket := string(p.TicketMode)
+
+		// Preview (truncate)
+		preview := strings.ReplaceAll(p.Body, "\n", " ")
+		maxPreview := pp.width - 50
+		if maxPreview < 10 {
+			maxPreview = 10
+		}
+		if len(preview) > maxPreview {
+			preview = preview[:maxPreview-3] + "..."
+		}
+
+		line := fmt.Sprintf("%s%-24s %-7s %-10s %s", prefix, truncateString(p.Name, 24), scope, ticket, preview)
+
+		if i == pp.selectedIdx {
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
+		} else {
+			sb.WriteString(dimText(line))
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(pp.filtered) > maxVisible {
+		sb.WriteString(dimText(fmt.Sprintf("  ... and %d more", len(pp.filtered)-maxVisible)))
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(dimText("  Enter: select   ↑/↓: move   Type to filter"))
+
+	return sb.String()
+}
+
+// truncateString truncates a string to maxLen, adding "..." if truncated.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// dimText is defined in view.go

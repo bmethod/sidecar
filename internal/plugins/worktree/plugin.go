@@ -1,6 +1,8 @@
 package worktree
 
 import (
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -95,8 +97,13 @@ type Plugin struct {
 	createTaskTitle       string    // Title of selected task for display
 	createAgentType       AgentType // Selected agent type (default: AgentClaude)
 	createSkipPermissions bool      // Skip permissions checkbox
-	createFocus           int       // 0=name, 1=base, 2=task, 3=agent, 4=skipPerms, 5=create, 6=cancel
+	createFocus           int       // 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create, 7=cancel
 	createError           string    // Error message to display in create modal
+
+	// Prompt state for create modal
+	createPrompts   []Prompt      // Available prompts (merged global + project)
+	createPromptIdx int           // Selected prompt index (-1 = none)
+	promptPicker    *PromptPicker // Picker modal state (when open)
 
 	// Task search state for create modal
 	taskSearchInput    textinput.Model
@@ -347,12 +354,40 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 			// Start agent or attach based on selection
 			if msg.AgentType != AgentNone && msg.AgentType != "" {
-				cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms))
+				cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.Prompt))
 			} else {
 				// "None" selected - attach to worktree directory
 				cmds = append(cmds, p.AttachToWorktreeDir(msg.Worktree))
 			}
 		}
+
+	case PromptSelectedMsg:
+		// Prompt selected from picker
+		p.viewMode = ViewModeCreate
+		p.promptPicker = nil
+		if msg.Prompt != nil {
+			// Find index of selected prompt
+			for i, pr := range p.createPrompts {
+				if pr.Name == msg.Prompt.Name {
+					p.createPromptIdx = i
+					break
+				}
+			}
+			// If ticketMode is none, skip task field and jump to agent
+			if msg.Prompt.TicketMode == TicketNone {
+				p.createFocus = 4 // agent field
+			} else {
+				p.createFocus = 3 // task field
+			}
+		} else {
+			p.createPromptIdx = -1
+			p.createFocus = 3 // task field
+		}
+
+	case PromptCancelledMsg:
+		// Picker cancelled, return to create modal
+		p.viewMode = ViewModeCreate
+		p.promptPicker = nil
 
 	case DeleteDoneMsg:
 		if msg.Err == nil {
@@ -655,6 +690,18 @@ func (p *Plugin) clearCreateModal() {
 	p.branchAll = nil
 	p.branchFiltered = nil
 	p.branchIdx = 0
+	// Clear prompt state
+	p.createPrompts = nil
+	p.createPromptIdx = -1
+	p.promptPicker = nil
+}
+
+// getSelectedPrompt returns the currently selected prompt, or nil if none.
+func (p *Plugin) getSelectedPrompt() *Prompt {
+	if p.createPromptIdx < 0 || p.createPromptIdx >= len(p.createPrompts) {
+		return nil
+	}
+	return &p.createPrompts[p.createPromptIdx]
 }
 
 // handleKeyPress processes key input based on current view mode.
@@ -674,8 +721,19 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleConfirmDeleteKeys(msg)
 	case ViewModeCommitForMerge:
 		return p.handleCommitForMergeKeys(msg)
+	case ViewModePromptPicker:
+		return p.handlePromptPickerKeys(msg)
 	}
 	return nil
+}
+
+// handlePromptPickerKeys handles keys in the prompt picker modal.
+func (p *Plugin) handlePromptPickerKeys(msg tea.KeyMsg) tea.Cmd {
+	if p.promptPicker == nil {
+		return nil
+	}
+	_, cmd := p.promptPicker.Update(msg)
+	return cmd
 }
 
 // handleAgentChoiceKeys handles keys in agent choice modal.
@@ -874,6 +932,12 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.createSkipPermissions = false
 		p.createFocus = 0
 		p.taskSearchLoading = true
+		// Load prompts from global and project config
+		home, _ := os.UserHomeDir()
+		configDir := filepath.Join(home, ".config", "sidecar")
+		p.createPrompts = LoadPrompts(configDir, p.ctx.WorkDir)
+		p.createPromptIdx = -1 // No prompt selected by default
+		p.promptPicker = nil
 		p.branchAll = nil
 		p.branchFiltered = nil
 		p.branchIdx = 0
@@ -1078,7 +1142,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 }
 
 // handleCreateKeys handles keys in create modal.
-// createFocus: 0=name, 1=base, 2=task, 3=agent, 4=skipPerms, 5=create button, 6=cancel button
+// createFocus: 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create button, 7=cancel button
 func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
@@ -1088,25 +1152,39 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 	case "tab":
 		// Blur current, move focus, focus new
 		p.blurCreateInputs()
-		p.createFocus = (p.createFocus + 1) % 7
-		// Skip state 4 (skipPerms) if checkbox is hidden
-		if p.createFocus == 4 && !p.shouldShowSkipPermissions() {
-			p.createFocus = (p.createFocus + 1) % 7
+		p.createFocus = (p.createFocus + 1) % 8
+		// Skip task field (3) if prompt has ticketMode=none
+		if p.createFocus == 3 {
+			prompt := p.getSelectedPrompt()
+			if prompt != nil && prompt.TicketMode == TicketNone {
+				p.createFocus = 4 // Skip to agent
+			}
+		}
+		// Skip state 5 (skipPerms) if checkbox is hidden
+		if p.createFocus == 5 && !p.shouldShowSkipPermissions() {
+			p.createFocus = 6
 		}
 		p.focusCreateInput()
 		return nil
 	case "shift+tab":
 		p.blurCreateInputs()
-		p.createFocus = (p.createFocus + 6) % 7
-		// Skip state 4 (skipPerms) if checkbox is hidden
-		if p.createFocus == 4 && !p.shouldShowSkipPermissions() {
-			p.createFocus = (p.createFocus + 6) % 7
+		p.createFocus = (p.createFocus + 7) % 8
+		// Skip state 5 (skipPerms) if checkbox is hidden
+		if p.createFocus == 5 && !p.shouldShowSkipPermissions() {
+			p.createFocus = 4
+		}
+		// Skip task field (3) if prompt has ticketMode=none
+		if p.createFocus == 3 {
+			prompt := p.getSelectedPrompt()
+			if prompt != nil && prompt.TicketMode == TicketNone {
+				p.createFocus = 2 // Back to prompt
+			}
 		}
 		p.focusCreateInput()
 		return nil
 	case "backspace":
-		// Clear selected task and allow searching again
-		if p.createFocus == 2 && p.createTaskID != "" {
+		// Clear selected task and allow searching again (now focus 3)
+		if p.createFocus == 3 && p.createTaskID != "" {
 			p.createTaskID = ""
 			p.createTaskTitle = ""
 			p.taskSearchInput.SetValue("")
@@ -1116,8 +1194,8 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 	case " ":
-		// Toggle skip permissions checkbox
-		if p.createFocus == 4 {
+		// Toggle skip permissions checkbox (now focus 5)
+		if p.createFocus == 5 {
 			p.createSkipPermissions = !p.createSkipPermissions
 			return nil
 		}
@@ -1129,15 +1207,15 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			}
 			return nil
 		}
-		// Navigate task dropdown
-		if p.createFocus == 2 && len(p.taskSearchFiltered) > 0 {
+		// Navigate task dropdown (now focus 3)
+		if p.createFocus == 3 && len(p.taskSearchFiltered) > 0 {
 			if p.taskSearchIdx > 0 {
 				p.taskSearchIdx--
 			}
 			return nil
 		}
-		// Navigate agent selection
-		if p.createFocus == 3 {
+		// Navigate agent selection (now focus 4)
+		if p.createFocus == 4 {
 			p.cycleAgentType(false)
 			return nil
 		}
@@ -1149,15 +1227,15 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			}
 			return nil
 		}
-		// Navigate task dropdown
-		if p.createFocus == 2 && len(p.taskSearchFiltered) > 0 {
+		// Navigate task dropdown (now focus 3)
+		if p.createFocus == 3 && len(p.taskSearchFiltered) > 0 {
 			if p.taskSearchIdx < len(p.taskSearchFiltered)-1 {
 				p.taskSearchIdx++
 			}
 			return nil
 		}
-		// Navigate agent selection
-		if p.createFocus == 3 {
+		// Navigate agent selection (now focus 4)
+		if p.createFocus == 4 {
 			p.cycleAgentType(true)
 			return nil
 		}
@@ -1167,32 +1245,38 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			selectedBranch := p.branchFiltered[p.branchIdx]
 			p.createBaseBranchInput.SetValue(selectedBranch)
 			p.createBaseBranchInput.Blur()
-			p.createFocus = 2 // Move to task field
+			p.createFocus = 2 // Move to prompt field
 			p.focusCreateInput()
 			return nil
 		}
-		// Select task from dropdown if in task field
-		if p.createFocus == 2 && len(p.taskSearchFiltered) > 0 {
+		// Open prompt picker if in prompt field
+		if p.createFocus == 2 {
+			p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
+			p.viewMode = ViewModePromptPicker
+			return nil
+		}
+		// Select task from dropdown if in task field (now focus 3)
+		if p.createFocus == 3 && len(p.taskSearchFiltered) > 0 {
 			// Select task and move to next field
 			selectedTask := p.taskSearchFiltered[p.taskSearchIdx]
 			p.createTaskID = selectedTask.ID
 			p.createTaskTitle = selectedTask.Title
 			p.taskSearchInput.Blur()
-			p.createFocus = 3 // Move to agent field
+			p.createFocus = 4 // Move to agent field
 			return nil
 		}
-		// Create button
-		if p.createFocus == 5 {
+		// Create button (now focus 6)
+		if p.createFocus == 6 {
 			return p.createWorktree()
 		}
-		// Cancel button
-		if p.createFocus == 6 {
+		// Cancel button (now focus 7)
+		if p.createFocus == 7 {
 			p.viewMode = ViewModeList
 			p.clearCreateModal()
 			return nil
 		}
-		// From input fields (0-2), move to next field
-		if p.createFocus < 3 {
+		// From input fields (0-1), move to next field
+		if p.createFocus < 2 {
 			p.blurCreateInputs()
 			p.createFocus++
 			p.focusCreateInput()
@@ -1212,7 +1296,7 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 		// Update filtered branches on input change
 		p.branchFiltered = filterBranches(p.createBaseBranchInput.Value(), p.branchAll)
 		p.branchIdx = 0
-	case 2:
+	case 3:
 		p.taskSearchInput, cmd = p.taskSearchInput.Update(msg)
 		// Update filtered results on input change
 		p.taskSearchFiltered = filterTasks(p.taskSearchInput.Value(), p.taskSearchAll)
@@ -1890,6 +1974,8 @@ func (p *Plugin) FocusContext() string {
 		return "worktree-confirm-delete"
 	case ViewModeCommitForMerge:
 		return "worktree-commit-for-merge"
+	case ViewModePromptPicker:
+		return "worktree-prompt-picker"
 	default:
 		if p.activePane == PanePreview {
 			return "worktree-preview"

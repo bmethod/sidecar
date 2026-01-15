@@ -79,6 +79,7 @@ type CreateDoneMsg struct {
 	Worktree  *Worktree
 	AgentType AgentType // Agent selected at creation
 	SkipPerms bool      // Whether to skip permissions
+	Prompt    *Prompt   // Selected prompt template (nil if none)
 	Err       error
 }
 

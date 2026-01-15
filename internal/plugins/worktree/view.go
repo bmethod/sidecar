@@ -55,6 +55,8 @@ func (p *Plugin) View(width, height int) string {
 		return p.renderConfirmDeleteModal(width, height)
 	case ViewModeCommitForMerge:
 		return p.renderCommitForMergeModal(width, height)
+	case ViewModePromptPicker:
+		return p.renderPromptPickerModal(width, height)
 	default:
 		return p.renderListView(width, height)
 	}
@@ -837,91 +839,168 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 	}
 	sb.WriteString("\n\n")
 
-	// Task ID field with search dropdown
-	taskLabel := "Link Task (optional):"
-	taskStyle := inputStyle
+	// Prompt field (focus=2)
+	promptLabel := "Prompt:"
+	promptStyle := inputStyle
 	if p.createFocus == 2 {
-		taskStyle = inputFocusedStyle
+		promptStyle = inputFocusedStyle
 	}
-	sb.WriteString(taskLabel)
+	sb.WriteString(promptLabel)
 	sb.WriteString("\n")
-	// If task already selected, show ID and title; otherwise show the search input
-	if p.createTaskID != "" {
-		// Show task ID and title, truncate title if needed
-		display := p.createTaskID
-		if p.createTaskTitle != "" {
-			title := p.createTaskTitle
-			maxTitle := inputW - len(p.createTaskID) - 3 // Account for ": " separator
-			if maxTitle > 10 && len(title) > maxTitle {
-				title = title[:maxTitle-3] + "..."
-			}
-			if maxTitle > 10 {
-				display = fmt.Sprintf("%s: %s", p.createTaskID, title)
-			}
-		}
-		sb.WriteString(taskStyle.Render(display))
-	} else {
-		sb.WriteString(taskStyle.Render(p.taskSearchInput.View()))
-	}
 
-	// Show hint when task is selected and focused
-	if p.createFocus == 2 && p.createTaskID != "" {
+	// Get selected prompt
+	selectedPrompt := p.getSelectedPrompt()
+	if len(p.createPrompts) == 0 {
+		// No prompts configured
+		sb.WriteString(promptStyle.Render("No prompts configured"))
 		sb.WriteString("\n")
-		sb.WriteString(dimText("  Backspace to clear"))
+		sb.WriteString(dimText("  Add prompts to:"))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("    Global:  ~/.config/sidecar/config.(yaml|json)"))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("    Project: ./.sidecar/config.(yaml|json)"))
+	} else if selectedPrompt == nil {
+		// None selected
+		sb.WriteString(promptStyle.Render("(none)"))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("  Press Enter to select a prompt template"))
+	} else {
+		// Show selected prompt with scope indicator
+		scopeIndicator := "[G] global"
+		if selectedPrompt.Source == "project" {
+			scopeIndicator = "[P] project"
+		}
+		displayText := fmt.Sprintf("%s  %s", selectedPrompt.Name, dimText(scopeIndicator))
+		sb.WriteString(promptStyle.Render(displayText))
+		sb.WriteString("\n")
+		// Show preview of prompt body (first ~60 chars, single line)
+		preview := strings.ReplaceAll(selectedPrompt.Body, "\n", " ")
+		if len(preview) > 60 {
+			preview = preview[:57] + "..."
+		}
+		sb.WriteString(dimText(fmt.Sprintf("  Preview: %s", preview)))
 	}
+	sb.WriteString("\n\n")
 
-	// Show task dropdown when focused and has results
-	if p.createFocus == 2 && p.createTaskID == "" {
-		if p.taskSearchLoading {
-			sb.WriteString("\n")
-			sb.WriteString(dimText("  Loading tasks..."))
-		} else if len(p.taskSearchFiltered) > 0 {
-			maxDropdown := 5
-			dropdownCount := min(maxDropdown, len(p.taskSearchFiltered))
-			for i := 0; i < dropdownCount; i++ {
-				task := p.taskSearchFiltered[i]
-				prefix := "  "
-				if i == p.taskSearchIdx {
-					prefix = "> "
-				}
-				// Truncate title based on available width
-				// Account for: prefix(2) + task.ID(~12) + spacing(2) + modal padding(6)
-				title := task.Title
-				idWidth := len(task.ID)
-				maxTitle := modalW - idWidth - 10
-				if maxTitle < 10 {
-					maxTitle = 10
-				}
-				if len(title) > maxTitle {
+	// Task ID field with search dropdown (focus=3)
+	// Handle ticketMode: none - show disabled message instead of input
+	if selectedPrompt != nil && selectedPrompt.TicketMode == TicketNone {
+		sb.WriteString(dimText("Ticket: (not allowed by selected prompt)"))
+	} else {
+		// Dynamic label based on selected prompt's ticketMode
+		var taskLabel string
+		if selectedPrompt != nil {
+			switch selectedPrompt.TicketMode {
+			case TicketRequired:
+				taskLabel = "Link Task (required by selected prompt):"
+			case TicketOptional:
+				taskLabel = "Link Task (optional for selected prompt):"
+			default:
+				taskLabel = "Link Task (optional):"
+			}
+		} else {
+			taskLabel = "Link Task (optional):"
+		}
+
+		taskStyle := inputStyle
+		if p.createFocus == 3 {
+			taskStyle = inputFocusedStyle
+		}
+		sb.WriteString(taskLabel)
+		sb.WriteString("\n")
+		// If task already selected, show ID and title; otherwise show the search input
+		if p.createTaskID != "" {
+			// Show task ID and title, truncate title if needed
+			display := p.createTaskID
+			if p.createTaskTitle != "" {
+				title := p.createTaskTitle
+				maxTitle := inputW - len(p.createTaskID) - 3 // Account for ": " separator
+				if maxTitle > 10 && len(title) > maxTitle {
 					title = title[:maxTitle-3] + "..."
 				}
-				line := fmt.Sprintf("%s%s  %s", prefix, task.ID, title)
-				sb.WriteString("\n")
-				if i == p.taskSearchIdx {
-					sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
-				} else {
-					sb.WriteString(dimText(line))
+				if maxTitle > 10 {
+					display = fmt.Sprintf("%s: %s", p.createTaskID, title)
 				}
 			}
-			if len(p.taskSearchFiltered) > maxDropdown {
-				sb.WriteString("\n")
-				sb.WriteString(dimText(fmt.Sprintf("  ... and %d more", len(p.taskSearchFiltered)-maxDropdown)))
-			}
-		} else if p.taskSearchInput.Value() != "" {
-			sb.WriteString("\n")
-			sb.WriteString(dimText("  No matching tasks"))
-		} else if len(p.taskSearchAll) == 0 {
-			sb.WriteString("\n")
-			sb.WriteString(dimText("  No open tasks found"))
+			sb.WriteString(taskStyle.Render(display))
 		} else {
-			// Show hint when no query
+			sb.WriteString(taskStyle.Render(p.taskSearchInput.View()))
+		}
+
+		// Show hint when task is selected and focused
+		if p.createFocus == 3 && p.createTaskID != "" {
 			sb.WriteString("\n")
-			sb.WriteString(dimText("  Type to search, ↑/↓ to navigate"))
+			sb.WriteString(dimText("  Backspace to clear"))
+		}
+
+		// Show fallback hint for optional tickets
+		if selectedPrompt != nil && selectedPrompt.TicketMode == TicketOptional && p.createTaskID == "" {
+			fallback := ExtractFallback(selectedPrompt.Body)
+			if fallback != "" {
+				sb.WriteString("\n")
+				sb.WriteString(dimText(fmt.Sprintf("  Default if empty: \"%s\"", fallback)))
+			}
+		}
+
+		// Show tip for required tickets
+		if selectedPrompt != nil && selectedPrompt.TicketMode == TicketRequired {
+			sb.WriteString("\n")
+			sb.WriteString(dimText("  Tip: ticket is passed as an ID only. The agent fetches via td."))
+		}
+
+		// Show task dropdown when focused and has results
+		if p.createFocus == 3 && p.createTaskID == "" {
+			if p.taskSearchLoading {
+				sb.WriteString("\n")
+				sb.WriteString(dimText("  Loading tasks..."))
+			} else if len(p.taskSearchFiltered) > 0 {
+				maxDropdown := 5
+				dropdownCount := min(maxDropdown, len(p.taskSearchFiltered))
+				for i := 0; i < dropdownCount; i++ {
+					task := p.taskSearchFiltered[i]
+					prefix := "  "
+					if i == p.taskSearchIdx {
+						prefix = "> "
+					}
+					// Truncate title based on available width
+					// Account for: prefix(2) + task.ID(~12) + spacing(2) + modal padding(6)
+					title := task.Title
+					idWidth := len(task.ID)
+					maxTitle := modalW - idWidth - 10
+					if maxTitle < 10 {
+						maxTitle = 10
+					}
+					if len(title) > maxTitle {
+						title = title[:maxTitle-3] + "..."
+					}
+					line := fmt.Sprintf("%s%s  %s", prefix, task.ID, title)
+					sb.WriteString("\n")
+					if i == p.taskSearchIdx {
+						sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
+					} else {
+						sb.WriteString(dimText(line))
+					}
+				}
+				if len(p.taskSearchFiltered) > maxDropdown {
+					sb.WriteString("\n")
+					sb.WriteString(dimText(fmt.Sprintf("  ... and %d more", len(p.taskSearchFiltered)-maxDropdown)))
+				}
+			} else if p.taskSearchInput.Value() != "" {
+				sb.WriteString("\n")
+				sb.WriteString(dimText("  No matching tasks"))
+			} else if len(p.taskSearchAll) == 0 {
+				sb.WriteString("\n")
+				sb.WriteString(dimText("  No open tasks found"))
+			} else {
+				// Show hint when no query
+				sb.WriteString("\n")
+				sb.WriteString(dimText("  Type to search, ↑/↓ to navigate"))
+			}
 		}
 	}
 	sb.WriteString("\n\n")
 
-	// Agent Selection (radio buttons)
+	// Agent Selection (radio buttons) - focus=4
 	sb.WriteString("Agent:")
 	sb.WriteString("\n")
 	for _, at := range AgentTypeOrder {
@@ -932,7 +1011,7 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 		name := AgentDisplayNames[at]
 		line := prefix + name
 
-		if p.createFocus == 3 && at == p.createAgentType {
+		if p.createFocus == 4 && at == p.createAgentType {
 			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(line))
 		} else if at == p.createAgentType {
 			sb.WriteString(line)
@@ -942,7 +1021,7 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 		sb.WriteString("\n")
 	}
 
-	// Skip Permissions Checkbox (only show when agent is selected and supports it)
+	// Skip Permissions Checkbox (only show when agent is selected and supports it) - focus=5
 	if p.createAgentType != AgentNone {
 		flag := SkipPermissionsFlags[p.createAgentType]
 		if flag != "" {
@@ -953,7 +1032,7 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 			}
 			skipLine := fmt.Sprintf("  %s Auto-approve all actions", checkBox)
 
-			if p.createFocus == 4 {
+			if p.createFocus == 5 {
 				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Render(skipLine))
 			} else {
 				sb.WriteString(skipLine)
@@ -976,13 +1055,13 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 		sb.WriteString("\n\n")
 	}
 
-	// Buttons - Create and Cancel
+	// Buttons - Create and Cancel (focus=6 and focus=7)
 	createBtnStyle := styles.Button
 	cancelBtnStyle := styles.Button
-	if p.createFocus == 5 {
+	if p.createFocus == 6 {
 		createBtnStyle = styles.ButtonFocused
 	}
-	if p.createFocus == 6 {
+	if p.createFocus == 7 {
 		cancelBtnStyle = styles.ButtonFocused
 	}
 	sb.WriteString(createBtnStyle.Render(" Create "))
@@ -1191,6 +1270,29 @@ func (p *Plugin) renderConfirmDeleteModal(width, height int) string {
 	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmDelete, deleteX, buttonY, 12, 1, nil)
 	cancelX := deleteX + 12 + 2 // delete width + spacing
 	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmCancel, cancelX, buttonY, 12, 1, nil)
+
+	return ui.OverlayModal(background, modal, width, height)
+}
+
+// renderPromptPickerModal renders the prompt picker modal.
+func (p *Plugin) renderPromptPickerModal(width, height int) string {
+	// Render the background (create modal behind it)
+	background := p.renderCreateModal(width, height)
+
+	if p.promptPicker == nil {
+		return background
+	}
+
+	// Modal dimensions
+	modalW := 80
+	if modalW > width-4 {
+		modalW = width - 4
+	}
+	p.promptPicker.width = modalW
+	p.promptPicker.height = height
+
+	content := p.promptPicker.View()
+	modal := modalStyle.Width(modalW).Render(content)
 
 	return ui.OverlayModal(background, modal, width, height)
 }

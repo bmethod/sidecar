@@ -19,6 +19,7 @@ const (
 	ViewModeAgentChoice                     // Agent action choice modal (attach/restart)
 	ViewModeConfirmDelete                   // Delete confirmation modal
 	ViewModeCommitForMerge                  // Commit modal before merge workflow
+	ViewModePromptPicker                    // Prompt template picker modal
 )
 
 // FocusPane represents which pane is active in the split view.
