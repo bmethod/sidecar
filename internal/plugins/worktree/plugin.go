@@ -300,6 +300,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				wt.TaskID = loadTaskLink(wt.Path)
 				// Load chosen agent type from .sidecar-agent file
 				wt.ChosenAgentType = loadAgentType(wt.Path)
+				// Load PR URL from .sidecar-pr file
+				wt.PRURL = loadPRURL(wt.Path)
 			}
 			// Detect conflicts across worktrees
 			cmds = append(cmds, p.loadConflicts())
@@ -559,6 +561,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 					cmds = append(cmds, p.advanceMergeStep())
 				case MergeStepCreatePR:
 					p.mergeState.PRURL = msg.Data
+					// Save PR URL to worktree for indicator in list
+					if wt := p.mergeState.Worktree; wt != nil && msg.Data != "" {
+						wt.PRURL = msg.Data
+						savePRURL(wt.Path, msg.Data)
+					}
 					// PR created - advanceMergeStep handles status transition
 					cmds = append(cmds, p.advanceMergeStep())
 				case MergeStepCleanup:

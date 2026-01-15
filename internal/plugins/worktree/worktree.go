@@ -281,6 +281,7 @@ func (p *Plugin) setupTDRoot(worktreePath string) error {
 
 const sidecarTaskFile = ".sidecar-task"
 const sidecarAgentFile = ".sidecar-agent"
+const sidecarPRFile = ".sidecar-pr"
 
 // loadTaskLink reads the linked task ID from the .sidecar-task file.
 func loadTaskLink(worktreePath string) string {
@@ -312,6 +313,28 @@ func loadAgentType(worktreePath string) AgentType {
 		return AgentNone
 	}
 	return AgentType(strings.TrimSpace(string(content)))
+}
+
+// savePRURL persists the PR URL to the worktree.
+func savePRURL(worktreePath string, prURL string) error {
+	if prURL == "" {
+		// Remove file if empty
+		prPath := filepath.Join(worktreePath, sidecarPRFile)
+		os.Remove(prPath) // Ignore error
+		return nil
+	}
+	prPath := filepath.Join(worktreePath, sidecarPRFile)
+	return os.WriteFile(prPath, []byte(prURL+"\n"), 0644)
+}
+
+// loadPRURL reads the PR URL from the worktree.
+func loadPRURL(worktreePath string) string {
+	prPath := filepath.Join(worktreePath, sidecarPRFile)
+	content, err := os.ReadFile(prPath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(content))
 }
 
 // linkTask returns a command to link a td task to a worktree.

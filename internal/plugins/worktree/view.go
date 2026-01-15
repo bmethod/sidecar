@@ -221,6 +221,13 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 		conflictIcon = " ⚠"
 	}
 
+	// Check for PR
+	hasPR := wt.PRURL != ""
+	prIcon := ""
+	if hasPR {
+		prIcon = " PR"
+	}
+
 	// Name and time
 	name := wt.Name
 	timeStr := formatRelativeTime(wt.UpdatedAt)
@@ -256,7 +263,7 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 	// When selected, use plain text to ensure consistent background
 	if isSelected {
 		// Build plain text lines
-		line1 := fmt.Sprintf(" %s %s%s", statusIcon, name, conflictIcon)
+		line1 := fmt.Sprintf(" %s %s%s%s", statusIcon, name, prIcon, conflictIcon)
 		line1Width := lipgloss.Width(line1)
 		timeWidth := lipgloss.Width(timeStr)
 		if line1Width < width-timeWidth-2 {
@@ -294,6 +301,12 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 		styledConflictIcon = styles.StatusModified.Render(" ⚠")
 	}
 
+	// Apply PR style
+	styledPRIcon := ""
+	if hasPR {
+		styledPRIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render(" PR") // blue
+	}
+
 	// For non-selected, style parts individually
 	var styledParts []string
 	if wt.Agent != nil {
@@ -317,7 +330,7 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 	}
 
 	// Build lines with styled elements
-	line1 := fmt.Sprintf(" %s %s%s", icon, name, styledConflictIcon)
+	line1 := fmt.Sprintf(" %s %s%s%s", icon, name, styledPRIcon, styledConflictIcon)
 	line1Width := ansi.StringWidth(line1)
 	timeWidth := ansi.StringWidth(timeStr)
 	if line1Width < width-timeWidth-2 {
