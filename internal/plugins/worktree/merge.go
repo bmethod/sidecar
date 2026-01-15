@@ -273,6 +273,7 @@ type checkPRMergeMsg struct {
 }
 
 // advanceMergeStep moves to the next step in the merge workflow.
+// It marks the current step as "done" and advances to the next step.
 func (p *Plugin) advanceMergeStep() tea.Cmd {
 	if p.mergeState == nil {
 		return nil
@@ -280,13 +281,14 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 
 	switch p.mergeState.Step {
 	case MergeStepReviewDiff:
-		// Move to push step
+		// Move to push step (ReviewDiff marked done by message handler)
 		p.mergeState.Step = MergeStepPush
 		p.mergeState.StepStatus[MergeStepPush] = "running"
 		return p.pushForMerge(p.mergeState.Worktree)
 
 	case MergeStepPush:
-		// Move to create PR step
+		// Mark Push as done, move to create PR step
+		p.mergeState.StepStatus[MergeStepPush] = "done"
 		p.mergeState.Step = MergeStepCreatePR
 		p.mergeState.StepStatus[MergeStepCreatePR] = "running"
 		title := p.mergeState.PRTitle
@@ -300,14 +302,16 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 		return p.createPR(p.mergeState.Worktree, title, body)
 
 	case MergeStepCreatePR:
-		// Move to waiting for merge
+		// Mark CreatePR as done, move to waiting for merge
+		p.mergeState.StepStatus[MergeStepCreatePR] = "done"
 		p.mergeState.Step = MergeStepWaitingMerge
 		p.mergeState.StepStatus[MergeStepWaitingMerge] = "running"
 		// Schedule periodic checks
 		return p.schedulePRCheck(p.mergeState.Worktree.Name, 10*time.Second)
 
 	case MergeStepWaitingMerge:
-		// Move to cleanup
+		// Mark WaitingMerge as done, move to cleanup
+		p.mergeState.StepStatus[MergeStepWaitingMerge] = "done"
 		p.mergeState.Step = MergeStepCleanup
 		p.mergeState.StepStatus[MergeStepCleanup] = "running"
 		return p.cleanupAfterMerge(p.mergeState.Worktree)

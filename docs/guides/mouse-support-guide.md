@@ -311,3 +311,37 @@ case mouse.ActionScrollUp, mouse.ActionScrollDown:
 ### Drag not working
 **Cause:** `StartDrag()` not called on initial click, or checking wrong region ID.
 **Fix:** Call `StartDrag(x, y, regionID, initialValue)` in the click handler, then check `DragRegion()` in the drag handler.
+
+### Clicks select the wrong row (off-by-one)
+**Cause:** Lipgloss styles with `MarginTop()`, `MarginBottom()`, or `Padding()` add extra blank lines that aren't accounted for in hit testing. For example:
+```go
+sectionHeader := lipgloss.NewStyle().Bold(true).MarginTop(1)  // Adds 1 blank line ABOVE
+
+// View renders 3 lines total:
+content.WriteString("\n")                          // Line 0: explicit blank
+content.WriteString(sectionHeader.Render("HEADER")) // Line 1: MarginTop blank, Line 2: "HEADER"
+
+// But hit test only accounts for 2 lines:
+// linePos 0: blank line
+// linePos 1: header      <- WRONG! This is actually the MarginTop blank
+// linePos 2: first item  <- WRONG! This is actually the header
+```
+This causes clicks to select the row BELOW the intended target.
+
+**Fix:** Account for ALL lines including those from lipgloss styling:
+```go
+// linePos 0: explicit blank line
+if relY == linePos { return -1 }
+linePos++
+// linePos 1: MarginTop blank line (from sectionHeader style)
+if relY == linePos { return -1 }
+linePos++
+// linePos 2: header text
+if relY == linePos { return -1 }
+linePos++
+// linePos 3+: content items
+```
+
+**Prevention:** When using styled components, check if they have margin/padding that adds vertical space. Test by clicking on the first few items after a styled header - if clicks select the wrong row, count the actual rendered lines vs what the hit test expects.
+
+**See also:** TD Monitor's `hitTestCurrentWorkRow()` in `pkg/monitor/input.go` for an example of accounting for `sectionHeader`'s `MarginTop(1)`.

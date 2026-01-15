@@ -102,6 +102,7 @@ const (
 var SkipPermissionsFlags = map[AgentType]string{
 	AgentClaude:   "--dangerously-skip-permissions",
 	AgentCodex:    "--dangerously-bypass-approvals-and-sandbox",
+	AgentAider:    "--yes",
 	AgentGemini:   "--yolo",
 	AgentCursor:   "-f",
 	AgentOpenCode: "", // No known flag

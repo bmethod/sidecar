@@ -472,19 +472,21 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				p.mergeState.Error = msg.Err
 				p.mergeState.StepStatus[msg.Step] = "error"
 			} else {
-				p.mergeState.StepStatus[msg.Step] = "done"
 				switch msg.Step {
 				case MergeStepReviewDiff:
+					// ReviewDiff: User manually advances, so mark done here
+					p.mergeState.StepStatus[msg.Step] = "done"
 					p.mergeState.DiffSummary = msg.Data
 				case MergeStepPush:
-					// Push complete, auto-advance to Create PR
+					// Push complete - advanceMergeStep handles status transition
 					cmds = append(cmds, p.advanceMergeStep())
 				case MergeStepCreatePR:
 					p.mergeState.PRURL = msg.Data
-					// PR created, auto-advance to Waiting for Merge
+					// PR created - advanceMergeStep handles status transition
 					cmds = append(cmds, p.advanceMergeStep())
 				case MergeStepCleanup:
-					// Cleanup done, remove from worktree list
+					// Cleanup done, mark done and remove from worktree list
+					p.mergeState.StepStatus[msg.Step] = "done"
 					p.removeWorktreeByName(msg.WorktreeName)
 					if p.selectedIdx >= len(p.worktrees) && p.selectedIdx > 0 {
 						p.selectedIdx--
@@ -1344,6 +1346,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 			if p.selectedIdx != idx {
 				p.selectedIdx = idx
 				p.previewOffset = 0
+				p.previewHorizOffset = 0
 				p.autoScrollOutput = true
 			}
 			p.ensureVisible()

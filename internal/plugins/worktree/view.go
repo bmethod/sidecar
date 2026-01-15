@@ -76,6 +76,15 @@ func (p *Plugin) renderListView(width, height int) string {
 		// Register hit region for full-width preview
 		p.mouseHandler.HitMap.AddRect(regionPreviewPane, 0, 0, width, paneHeight, nil)
 
+		// Register preview tab hit regions (same as sidebar-visible case)
+		// X starts at 2 (1 for border + 1 for panel padding)
+		tabWidths := []int{10, 8, 8} // " Output " + padding, " Diff " + padding, " Task " + padding
+		tabX := 2
+		for i, tabWidth := range tabWidths {
+			p.mouseHandler.HitMap.AddRect(regionPreviewTab, tabX, 1, tabWidth, 1, i)
+			tabX += tabWidth + 1
+		}
+
 		previewContent := p.renderPreviewContent(width-4, innerHeight)
 		return styles.RenderPanel(previewContent, width, paneHeight, true)
 	}
@@ -245,15 +254,16 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 	if isSelected {
 		// Build plain text lines
 		line1 := fmt.Sprintf(" %s %s%s", statusIcon, name, conflictIcon)
-		line1Width := len(line1)
-		timeWidth := len(timeStr)
+		line1Width := lipgloss.Width(line1)
+		timeWidth := lipgloss.Width(timeStr)
 		if line1Width < width-timeWidth-2 {
 			line1 = line1 + strings.Repeat(" ", width-line1Width-timeWidth-1) + timeStr
 		}
 		line2 := "   " + strings.Join(parts, "  ")
 		// Pad line2 to full width for consistent background
-		if len(line2) < width {
-			line2 = line2 + strings.Repeat(" ", width-len(line2))
+		line2Width := lipgloss.Width(line2)
+		if line2Width < width {
+			line2 = line2 + strings.Repeat(" ", width-line2Width)
 		}
 		content := line1 + "\n" + line2
 		return styles.ListItemSelected.Width(width).Render(content)
@@ -1092,9 +1102,10 @@ func (p *Plugin) renderConfirmDeleteModal(width, height int) string {
 	// border(1) + padding(1) + title(1) + empty(1) + name/branch/path(3) + empty(1) + warning header(1) + bullets(3) + empty(1) = 12 lines
 	buttonY := modalStartY + 2 + 12 // border+padding + content lines
 	deleteX := modalStartX + 3      // border + padding
-	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmDelete, deleteX, buttonY, 10, 1, nil)
-	cancelX := deleteX + 10 + 2 // delete width + spacing
-	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmCancel, cancelX, buttonY, 10, 1, nil)
+	// " Delete " (8) + Padding(0,2) = 12 chars, " Cancel " (8) + Padding(0,2) = 12 chars
+	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmDelete, deleteX, buttonY, 12, 1, nil)
+	cancelX := deleteX + 12 + 2 // delete width + spacing
+	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmCancel, cancelX, buttonY, 12, 1, nil)
 
 	return ui.OverlayModal(background, modal, width, height)
 }
@@ -1173,10 +1184,11 @@ func (p *Plugin) renderAgentChoiceModal(width, height int) string {
 	// Hit regions for buttons
 	// Buttons are after options (2) + empty (1) = 3 more lines
 	buttonY := optionY + 3
-	confirmX := modalStartX + 3                       // border + padding
-	p.mouseHandler.HitMap.AddRect(regionAgentChoiceConfirm, confirmX, buttonY, 10, 1, nil)
-	cancelX := confirmX + 10 + 2                      // confirm width + spacing
-	p.mouseHandler.HitMap.AddRect(regionAgentChoiceCancel, cancelX, buttonY, 10, 1, nil)
+	confirmX := modalStartX + 3 // border + padding
+	// " Confirm " (9) + Padding(0,2) = 13 chars, " Cancel " (8) + Padding(0,2) = 12 chars
+	p.mouseHandler.HitMap.AddRect(regionAgentChoiceConfirm, confirmX, buttonY, 13, 1, nil)
+	cancelX := confirmX + 13 + 2 // confirm width + spacing
+	p.mouseHandler.HitMap.AddRect(regionAgentChoiceCancel, cancelX, buttonY, 12, 1, nil)
 
 	return ui.OverlayModal(background, modal, width, height)
 }
