@@ -128,6 +128,21 @@ func (pp *PromptPicker) View() string {
 	sb.WriteString(dimText("Esc to cancel"))
 	sb.WriteString("\n\n")
 
+	// Handle empty prompts case
+	if len(pp.prompts) == 0 {
+		sb.WriteString("No prompts configured.\n\n")
+		sb.WriteString(dimText("Add prompts to one of these config files:"))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("  Global:  ~/.config/sidecar/config.yaml"))
+		sb.WriteString("\n")
+		sb.WriteString(dimText("  Project: .sidecar/config.yaml"))
+		sb.WriteString("\n\n")
+		sb.WriteString(dimText("See: docs/guides/creating-prompts.md"))
+		sb.WriteString("\n\n")
+		sb.WriteString(dimText("Press Esc or Enter to continue without a prompt"))
+		return sb.String()
+	}
+
 	// Filter input
 	sb.WriteString("Filter: ")
 	filterStyle := inputStyle.Width(30)

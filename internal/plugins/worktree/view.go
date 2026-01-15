@@ -854,11 +854,7 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 		// No prompts configured
 		sb.WriteString(promptStyle.Render("No prompts configured"))
 		sb.WriteString("\n")
-		sb.WriteString(dimText("  Add prompts to:"))
-		sb.WriteString("\n")
-		sb.WriteString(dimText("    Global:  ~/.config/sidecar/config.(yaml|json)"))
-		sb.WriteString("\n")
-		sb.WriteString(dimText("    Project: ./.sidecar/config.(yaml|json)"))
+		sb.WriteString(dimText("  See: docs/guides/creating-prompts.md"))
 	} else if selectedPrompt == nil {
 		// None selected
 		sb.WriteString(promptStyle.Render("(none)"))
