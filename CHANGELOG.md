@@ -2,6 +2,22 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.15.0] - 2026-01-14
+
+### Features
+- Remember worktree diff mode (staged/unstaged preference persists)
+- Documented worktrees plugin in README
+
+### Bug Fixes
+- Fixed git diff view for commits
+- Many QoL changes and bug fixes
+- Ignore double-click on folders in git status (single-click handles expansion)
+- Clear stale push hash on push error
+- Add shift+tab support for worktree pane switching
+
+### Dependencies
+- Updated embedded td to v0.12.1 (from v0.12.0)
+
 ## [v0.14.7] - 2026-01-14
 
 ### Features
