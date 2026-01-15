@@ -11,13 +11,14 @@ import (
 type ViewMode int
 
 const (
-	ViewModeList          ViewMode = iota // List view (default)
-	ViewModeKanban                         // Kanban board view
-	ViewModeCreate                         // New worktree modal
-	ViewModeTaskLink                       // Task link modal (for existing worktrees)
-	ViewModeMerge                          // Merge workflow modal
-	ViewModeAgentChoice                    // Agent action choice modal (attach/restart)
-	ViewModeConfirmDelete                  // Delete confirmation modal
+	ViewModeList            ViewMode = iota // List view (default)
+	ViewModeKanban                          // Kanban board view
+	ViewModeCreate                          // New worktree modal
+	ViewModeTaskLink                        // Task link modal (for existing worktrees)
+	ViewModeMerge                           // Merge workflow modal
+	ViewModeAgentChoice                     // Agent action choice modal (attach/restart)
+	ViewModeConfirmDelete                   // Delete confirmation modal
+	ViewModeCommitForMerge                  // Commit modal before merge workflow
 )
 
 // FocusPane represents which pane is active in the split view.

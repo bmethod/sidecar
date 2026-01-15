@@ -117,6 +117,10 @@ type Plugin struct {
 	// Merge workflow state
 	mergeState *MergeWorkflowState
 
+	// Commit-before-merge state
+	mergeCommitState        *MergeCommitState
+	mergeCommitMessageInput textinput.Model
+
 	// Agent choice modal state (attach vs restart)
 	agentChoiceWorktree    *Worktree
 	agentChoiceIdx         int // 0=attach, 1=restart
@@ -481,6 +485,50 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			p.cachedTaskFetched = time.Now()
 		}
 
+	case UncommittedChangesCheckMsg:
+		if msg.Err != nil {
+			// Error checking changes, proceed to merge anyway
+			wt := p.findWorktree(msg.WorktreeName)
+			if wt != nil {
+				cmds = append(cmds, p.proceedToMergeWorkflow(wt))
+			}
+		} else if msg.HasChanges {
+			// Show commit modal
+			wt := p.findWorktree(msg.WorktreeName)
+			if wt != nil {
+				p.mergeCommitState = &MergeCommitState{
+					Worktree:       wt,
+					StagedCount:    msg.StagedCount,
+					ModifiedCount:  msg.ModifiedCount,
+					UntrackedCount: msg.UntrackedCount,
+				}
+				p.mergeCommitMessageInput = textinput.New()
+				p.mergeCommitMessageInput.Placeholder = "Commit message..."
+				p.mergeCommitMessageInput.Focus()
+				p.mergeCommitMessageInput.CharLimit = 200
+				p.viewMode = ViewModeCommitForMerge
+			}
+		} else {
+			// No uncommitted changes, proceed to merge
+			wt := p.findWorktree(msg.WorktreeName)
+			if wt != nil {
+				cmds = append(cmds, p.proceedToMergeWorkflow(wt))
+			}
+		}
+
+	case MergeCommitDoneMsg:
+		if p.mergeCommitState != nil && p.mergeCommitState.Worktree.Name == msg.WorktreeName {
+			if msg.Err != nil {
+				p.mergeCommitState.Error = msg.Err.Error()
+			} else {
+				// Commit succeeded, proceed to merge workflow
+				wt := p.mergeCommitState.Worktree
+				p.mergeCommitState = nil
+				p.mergeCommitMessageInput = textinput.Model{}
+				cmds = append(cmds, p.proceedToMergeWorkflow(wt))
+			}
+		}
+
 	case MergeStepCompleteMsg:
 		if p.mergeState != nil && p.mergeState.Worktree.Name == msg.WorktreeName {
 			if msg.Err != nil {
@@ -603,6 +651,8 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleAgentChoiceKeys(msg)
 	case ViewModeConfirmDelete:
 		return p.handleConfirmDeleteKeys(msg)
+	case ViewModeCommitForMerge:
+		return p.handleCommitForMergeKeys(msg)
 	}
 	return nil
 }
@@ -1265,6 +1315,39 @@ func (p *Plugin) handleMergeKeys(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
+// handleCommitForMergeKeys handles keys in the commit-before-merge modal.
+func (p *Plugin) handleCommitForMergeKeys(msg tea.KeyMsg) tea.Cmd {
+	if p.mergeCommitState == nil {
+		p.viewMode = ViewModeList
+		return nil
+	}
+
+	switch msg.String() {
+	case "esc":
+		// Cancel - return to list
+		p.mergeCommitState = nil
+		p.mergeCommitMessageInput = textinput.Model{}
+		p.viewMode = ViewModeList
+		return nil
+
+	case "enter":
+		// Commit and continue
+		message := p.mergeCommitMessageInput.Value()
+		if message == "" {
+			p.mergeCommitState.Error = "Commit message cannot be empty"
+			return nil
+		}
+		p.mergeCommitState.Error = ""
+		return p.stageAllAndCommit(p.mergeCommitState.Worktree, message)
+	}
+
+	// Delegate to textinput for all other keys
+	p.mergeCommitState.Error = "" // Clear error when user types
+	var cmd tea.Cmd
+	p.mergeCommitMessageInput, cmd = p.mergeCommitMessageInput.Update(msg)
+	return cmd
+}
+
 // toggleSidebar toggles sidebar visibility.
 func (p *Plugin) toggleSidebar() {
 	p.sidebarVisible = !p.sidebarVisible
@@ -1639,6 +1722,11 @@ func (p *Plugin) Commands() []plugin.Command {
 			{ID: "cancel", Name: "Cancel", Description: "Cancel deletion", Context: "worktree-confirm-delete", Priority: 1},
 			{ID: "delete", Name: "Delete", Description: "Confirm deletion", Context: "worktree-confirm-delete", Priority: 2},
 		}
+	case ViewModeCommitForMerge:
+		return []plugin.Command{
+			{ID: "cancel", Name: "Cancel", Description: "Cancel merge", Context: "worktree-commit-for-merge", Priority: 1},
+			{ID: "commit", Name: "Commit", Description: "Commit and continue", Context: "worktree-commit-for-merge", Priority: 2},
+		}
 	default:
 		// View toggle label changes based on current mode
 		viewToggleName := "Kanban"
@@ -1752,6 +1840,8 @@ func (p *Plugin) FocusContext() string {
 		return "worktree-agent-choice"
 	case ViewModeConfirmDelete:
 		return "worktree-confirm-delete"
+	case ViewModeCommitForMerge:
+		return "worktree-commit-for-merge"
 	default:
 		if p.activePane == PanePreview {
 			return "worktree-preview"

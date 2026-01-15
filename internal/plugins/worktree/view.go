@@ -53,6 +53,8 @@ func (p *Plugin) View(width, height int) string {
 		return p.renderAgentChoiceModal(width, height)
 	case ViewModeConfirmDelete:
 		return p.renderConfirmDeleteModal(width, height)
+	case ViewModeCommitForMerge:
+		return p.renderCommitForMergeModal(width, height)
 	default:
 		return p.renderListView(width, height)
 	}
@@ -1353,6 +1355,85 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(
 			fmt.Sprintf("Error: %s", p.mergeState.Error.Error())))
 	}
+
+	content := sb.String()
+	modal := modalStyle.Width(modalW).Render(content)
+
+	// Use OverlayModal for dimmed background effect
+	return ui.OverlayModal(background, modal, width, height)
+}
+
+// renderCommitForMergeModal renders the commit-before-merge modal.
+func (p *Plugin) renderCommitForMergeModal(width, height int) string {
+	// Render the background (list view)
+	background := p.renderListView(width, height)
+
+	if p.mergeCommitState == nil {
+		return background
+	}
+
+	// Modal dimensions
+	modalW := 60
+	if modalW > width-4 {
+		modalW = width - 4
+	}
+
+	// Calculate input field width
+	inputW := modalW - 10
+	if inputW < 20 {
+		inputW = 20
+	}
+
+	// Set textinput width and remove default prompt
+	p.mergeCommitMessageInput.Width = inputW
+	p.mergeCommitMessageInput.Prompt = ""
+
+	wt := p.mergeCommitState.Worktree
+
+	var sb strings.Builder
+	title := "Uncommitted Changes"
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")).Render(title))
+	sb.WriteString("\n\n")
+
+	// Worktree info
+	sb.WriteString(fmt.Sprintf("Worktree: %s\n", lipgloss.NewStyle().Bold(true).Render(wt.Name)))
+	sb.WriteString(fmt.Sprintf("Branch:   %s\n", wt.Branch))
+	sb.WriteString("\n")
+
+	// Change counts
+	sb.WriteString("Changes to commit:\n")
+	if p.mergeCommitState.StagedCount > 0 {
+		sb.WriteString(fmt.Sprintf("  • %d staged file(s)\n", p.mergeCommitState.StagedCount))
+	}
+	if p.mergeCommitState.ModifiedCount > 0 {
+		sb.WriteString(fmt.Sprintf("  • %d modified file(s)\n", p.mergeCommitState.ModifiedCount))
+	}
+	if p.mergeCommitState.UntrackedCount > 0 {
+		sb.WriteString(fmt.Sprintf("  • %d untracked file(s)\n", p.mergeCommitState.UntrackedCount))
+	}
+	sb.WriteString("\n")
+
+	// Info message
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	sb.WriteString(infoStyle.Render("You must commit these changes before creating a PR."))
+	sb.WriteString("\n")
+	sb.WriteString(infoStyle.Render("All changes will be staged and committed."))
+	sb.WriteString("\n\n")
+
+	// Commit message field
+	sb.WriteString("Commit message:\n")
+	sb.WriteString(inputFocusedStyle.Render(p.mergeCommitMessageInput.View()))
+	sb.WriteString("\n")
+
+	// Display error if present
+	if p.mergeCommitState.Error != "" {
+		sb.WriteString("\n")
+		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+		sb.WriteString(errStyle.Render("Error: " + p.mergeCommitState.Error))
+	}
+
+	sb.WriteString("\n\n")
+	sb.WriteString(dimText("Enter to commit and continue • Esc to cancel"))
 
 	content := sb.String()
 	modal := modalStyle.Width(modalW).Render(content)

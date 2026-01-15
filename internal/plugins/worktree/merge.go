@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 )
 
 // MergeWorkflowStep represents the current step in the merge workflow.
@@ -69,12 +70,102 @@ type CheckPRMergedMsg struct {
 	Err          error
 }
 
+// UncommittedChangesCheckMsg signals the result of checking for uncommitted changes.
+type UncommittedChangesCheckMsg struct {
+	WorktreeName     string
+	HasChanges       bool
+	StagedCount      int
+	ModifiedCount    int
+	UntrackedCount   int
+	Err              error
+}
+
+// MergeCommitDoneMsg signals that the commit before merge completed.
+type MergeCommitDoneMsg struct {
+	WorktreeName string
+	CommitHash   string
+	Err          error
+}
+
+// MergeCommitState holds state for the commit-before-merge modal.
+type MergeCommitState struct {
+	Worktree       *Worktree
+	StagedCount    int
+	ModifiedCount  int
+	UntrackedCount int
+	CommitMessage  string
+	Error          string
+}
+
+// checkUncommittedChanges checks if a worktree has uncommitted changes.
+func (p *Plugin) checkUncommittedChanges(wt *Worktree) tea.Cmd {
+	return func() tea.Msg {
+		tree := gitstatus.NewFileTree(wt.Path)
+		if err := tree.Refresh(); err != nil {
+			return UncommittedChangesCheckMsg{
+				WorktreeName: wt.Name,
+				HasChanges:   false,
+				Err:          err,
+			}
+		}
+
+		stagedCount := len(tree.Staged)
+		modifiedCount := len(tree.Modified)
+		untrackedCount := len(tree.Untracked)
+		hasChanges := stagedCount > 0 || modifiedCount > 0 || untrackedCount > 0
+
+		return UncommittedChangesCheckMsg{
+			WorktreeName:   wt.Name,
+			HasChanges:     hasChanges,
+			StagedCount:    stagedCount,
+			ModifiedCount:  modifiedCount,
+			UntrackedCount: untrackedCount,
+		}
+	}
+}
+
+// stageAllAndCommit stages all changes and commits with the given message.
+func (p *Plugin) stageAllAndCommit(wt *Worktree, message string) tea.Cmd {
+	return func() tea.Msg {
+		tree := gitstatus.NewFileTree(wt.Path)
+
+		// Stage all changes
+		if err := tree.StageAll(); err != nil {
+			return MergeCommitDoneMsg{
+				WorktreeName: wt.Name,
+				Err:          fmt.Errorf("failed to stage: %w", err),
+			}
+		}
+
+		// Execute commit
+		hash, err := gitstatus.ExecuteCommit(wt.Path, message)
+		if err != nil {
+			return MergeCommitDoneMsg{
+				WorktreeName: wt.Name,
+				Err:          err,
+			}
+		}
+
+		return MergeCommitDoneMsg{
+			WorktreeName: wt.Name,
+			CommitHash:   hash,
+		}
+	}
+}
+
 // startMergeWorkflow initializes the merge workflow for a worktree.
+// It first checks for uncommitted changes and shows a commit modal if needed.
 func (p *Plugin) startMergeWorkflow(wt *Worktree) tea.Cmd {
 	if wt == nil {
 		return nil
 	}
 
+	// Check for uncommitted changes before proceeding
+	return p.checkUncommittedChanges(wt)
+}
+
+// proceedToMergeWorkflow initializes the actual merge workflow (after commit check passes).
+func (p *Plugin) proceedToMergeWorkflow(wt *Worktree) tea.Cmd {
 	// Initialize merge state
 	p.mergeState = &MergeWorkflowState{
 		Worktree:   wt,
