@@ -15,6 +15,15 @@ type Adapter interface {
 	Watch(projectRoot string) (<-chan Event, error)
 }
 
+// ProjectDiscoverer is an optional interface for adapters that can discover
+// related project directories (e.g., from deleted worktrees).
+type ProjectDiscoverer interface {
+	// DiscoverRelatedProjectDirs returns paths to project directories that
+	// appear related to the given main worktree path. Used to find conversations
+	// from deleted worktrees that git no longer knows about.
+	DiscoverRelatedProjectDirs(mainWorktreePath string) ([]string, error)
+}
+
 // Capability represents a feature supported by an adapter.
 type Capability string
 

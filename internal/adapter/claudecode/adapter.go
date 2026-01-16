@@ -376,6 +376,57 @@ func (a *Adapter) projectDirPath(projectRoot string) string {
 	return filepath.Join(a.projectsDir, hash)
 }
 
+// DiscoverRelatedProjectDirs scans ~/.claude/projects/ for directories that appear
+// related to the given main worktree path. This finds conversations from deleted
+// worktrees that git no longer knows about.
+//
+// Returns decoded absolute paths (e.g., "/Users/foo/code/myrepo-feature") for
+// directories whose encoded name shares the same repository base name.
+func (a *Adapter) DiscoverRelatedProjectDirs(mainWorktreePath string) ([]string, error) {
+	absMain, err := filepath.Abs(mainWorktreePath)
+	if err != nil {
+		return nil, nil
+	}
+	repoName := filepath.Base(absMain)
+	if repoName == "" || repoName == "." || repoName == "/" {
+		return nil, nil
+	}
+
+	entries, err := os.ReadDir(a.projectsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var related []string
+	// Encode the main path to find its pattern in directory names
+	// e.g., /Users/foo/code/myrepo -> -Users-foo-code-myrepo
+	encodedMain := strings.ReplaceAll(absMain, "/", "-")
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, "-") {
+			continue
+		}
+
+		// Match directories that:
+		// 1. Exactly match the main repo encoded path
+		// 2. Start with the main repo encoded path followed by hyphen (worktree suffix)
+		if name == encodedMain || strings.HasPrefix(name, encodedMain+"-") {
+			// Decode: -Users-foo-code-myrepo -> /Users/foo/code/myrepo
+			decoded := strings.ReplaceAll(name, "-", "/")
+			related = append(related, decoded)
+		}
+	}
+
+	return related, nil
+}
+
 // sessionFilePath finds the JSONL file for a given session ID.
 func (a *Adapter) sessionFilePath(sessionID string) string {
 	// Check cache first

@@ -1,6 +1,7 @@
 package opencode
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -474,5 +475,75 @@ func TestWithRealData(t *testing.T) {
 				t.Logf("message timestamp may not be in local timezone: %v", m.Timestamp)
 			}
 		}
+	}
+}
+
+func TestDiscoverRelatedProjectDirs(t *testing.T) {
+	// Create temp directory simulating OpenCode storage
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+
+	// Create test project files with different worktree paths
+	projects := []struct {
+		id       string
+		worktree string
+	}{
+		{"proj1", "/Users/test/code/myrepo"},
+		{"proj2", "/Users/test/code/myrepo-feature"},
+		{"proj3", "/Users/test/code/myrepo-bugfix"},
+		{"proj4", "/Users/test/other"},
+		{"proj5", "/Users/test/code/myrepo2"}, // Different repo
+	}
+
+	for _, p := range projects {
+		data := fmt.Sprintf(`{"id":"%s","worktree":"%s"}`, p.id, p.worktree)
+		path := filepath.Join(projectDir, p.id+".json")
+		if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+			t.Fatalf("failed to write project file: %v", err)
+		}
+	}
+
+	a := &Adapter{
+		storageDir:   tmpDir,
+		projectIndex: make(map[string]*Project),
+		sessionIndex: make(map[string]string),
+	}
+
+	// Test discovering related paths
+	related, err := a.DiscoverRelatedProjectDirs("/Users/test/code/myrepo")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Should find 3 related paths (myrepo, myrepo-feature, myrepo-bugfix)
+	if len(related) != 3 {
+		t.Errorf("expected 3 related paths, got %d: %v", len(related), related)
+	}
+
+	// Verify unrelated paths are not included
+	for _, p := range related {
+		if p == "/Users/test/other" || p == "/Users/test/code/myrepo2" {
+			t.Errorf("should not include unrelated path: %s", p)
+		}
+	}
+}
+
+func TestDiscoverRelatedProjectDirs_EmptyStorage(t *testing.T) {
+	tmpDir := t.TempDir()
+	a := &Adapter{
+		storageDir:   tmpDir,
+		projectIndex: make(map[string]*Project),
+		sessionIndex: make(map[string]string),
+	}
+
+	related, err := a.DiscoverRelatedProjectDirs("/Users/test/myrepo")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(related) != 0 {
+		t.Errorf("expected empty slice, got %v", related)
 	}
 }

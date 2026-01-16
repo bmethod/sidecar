@@ -1469,6 +1469,27 @@ func (p *Plugin) loadSessions() tea.Cmd {
 			worktreePaths = []string{p.ctx.WorkDir}
 		}
 
+		// Discover additional paths from adapters (finds deleted worktree conversations)
+		mainPath := app.GetMainWorktreePath(p.ctx.WorkDir)
+		if mainPath == "" {
+			mainPath = p.ctx.WorkDir
+		}
+		pathSet := make(map[string]bool, len(worktreePaths))
+		for _, path := range worktreePaths {
+			pathSet[path] = true
+		}
+		for _, a := range p.adapters {
+			if discoverer, ok := a.(adapter.ProjectDiscoverer); ok {
+				discovered, _ := discoverer.DiscoverRelatedProjectDirs(mainPath)
+				for _, path := range discovered {
+					if !pathSet[path] {
+						worktreePaths = append(worktreePaths, path)
+						pathSet[path] = true
+					}
+				}
+			}
+		}
+
 		// Track seen sessions to avoid duplicates (same session loaded from multiple paths)
 		seenSessions := make(map[string]bool)
 		var sessions []adapter.Session

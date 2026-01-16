@@ -339,6 +339,38 @@ func (a *Adapter) loadProjects() error {
 	return nil
 }
 
+// DiscoverRelatedProjectDirs scans OpenCode project files for worktree paths
+// related to the given main worktree path. This finds conversations from deleted
+// worktrees by checking if stored worktree paths share the same repository base name.
+func (a *Adapter) DiscoverRelatedProjectDirs(mainWorktreePath string) ([]string, error) {
+	absMain, err := filepath.Abs(mainWorktreePath)
+	if err != nil {
+		return nil, nil
+	}
+	repoName := filepath.Base(absMain)
+	if repoName == "" || repoName == "." || repoName == "/" {
+		return nil, nil
+	}
+
+	// Load projects if not already loaded
+	if !a.projectsLoaded {
+		if err := a.loadProjects(); err != nil {
+			return nil, nil
+		}
+	}
+
+	var related []string
+	for worktreePath := range a.projectIndex {
+		// Check if this worktree path is related to our repo
+		base := filepath.Base(worktreePath)
+		if base == repoName || strings.HasPrefix(base, repoName+"-") {
+			related = append(related, worktreePath)
+		}
+	}
+
+	return related, nil
+}
+
 // parseSessionFile parses a session JSON file and returns metadata.
 func (a *Adapter) parseSessionFile(path, projectID string) (*SessionMetadata, error) {
 	data, err := os.ReadFile(path)
