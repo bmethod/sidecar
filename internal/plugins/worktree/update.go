@@ -187,12 +187,26 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			wt.Agent.WaitingFor = msg.WaitingFor
 			wt.Status = msg.Status
 		}
-		// Schedule next poll (1 second interval)
-		return p, p.scheduleAgentPoll(msg.WorktreeName, 1*time.Second)
+		// Schedule next poll with adaptive interval based on status
+		interval := pollIntervalActive
+		switch msg.Status {
+		case StatusWaiting:
+			interval = pollIntervalWaiting
+		case StatusDone, StatusError:
+			interval = pollIntervalDone
+		}
+		return p, p.scheduleAgentPoll(msg.WorktreeName, interval)
 
 	case AgentPollUnchangedMsg:
-		// Content unchanged - schedule next poll with delay (no state update needed)
-		return p, p.scheduleAgentPoll(msg.WorktreeName, 1*time.Second)
+		// Content unchanged - use longer interval based on current status
+		interval := pollIntervalIdle
+		switch msg.CurrentStatus {
+		case StatusWaiting:
+			interval = pollIntervalWaiting
+		case StatusDone, StatusError:
+			interval = pollIntervalDone
+		}
+		return p, p.scheduleAgentPoll(msg.WorktreeName, interval)
 
 	case AgentStoppedMsg:
 		if wt := p.findWorktree(msg.WorktreeName); wt != nil {

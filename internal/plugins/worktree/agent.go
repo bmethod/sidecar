@@ -20,9 +20,16 @@ const (
 	// Default history limit for tmux scrollback capture
 	tmuxHistoryLimit = 10000
 
-	// Polling intervals
-	pollIntervalInitial = 500 * time.Millisecond
-	pollIntervalNormal  = 1 * time.Second
+	// Lines to capture from tmux (slightly > outputBufferCap for margin)
+	// We only need recent output for status detection and display
+	captureLineCount = 600
+
+	// Polling intervals - adaptive based on agent status
+	pollIntervalInitial = 500 * time.Millisecond // First poll after agent starts
+	pollIntervalActive  = 500 * time.Millisecond // Agent actively processing
+	pollIntervalIdle    = 3 * time.Second        // No change detected
+	pollIntervalWaiting = 5 * time.Second        // Agent waiting for user input
+	pollIntervalDone    = 10 * time.Second       // Agent completed/exited
 )
 
 // AgentStartedMsg signals an agent has been started in a worktree.
@@ -377,7 +384,8 @@ func (p *Plugin) scheduleAgentPoll(worktreeName string, delay time.Duration) tea
 
 // AgentPollUnchangedMsg signals content unchanged, schedule next poll.
 type AgentPollUnchangedMsg struct {
-	WorktreeName string
+	WorktreeName  string
+	CurrentStatus WorktreeStatus // For adaptive polling interval selection
 }
 
 // handlePollAgent captures output from a tmux session.
@@ -402,7 +410,11 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 		// Use hash-based change detection to skip processing if content unchanged
 		if wt.Agent.OutputBuf != nil && !wt.Agent.OutputBuf.Update(output) {
 			// Content unchanged - signal to schedule next poll with delay
-			return AgentPollUnchangedMsg{WorktreeName: worktreeName}
+			// Include current status for adaptive polling interval selection
+			return AgentPollUnchangedMsg{
+				WorktreeName:  worktreeName,
+				CurrentStatus: wt.Status,
+			}
 		}
 
 		// Content changed - detect status and emit
@@ -432,14 +444,19 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 	}
 }
 
-// capturePane captures the current content of a tmux pane.
+// capturePane captures the last N lines of a tmux pane.
+// We only capture captureLineCount lines since that's sufficient for:
+// - Status detection (checks last ~10 lines)
+// - OutputBuffer storage (caps at 500 lines)
+// - User scroll-back viewing
 func capturePane(sessionName string) (string, error) {
 	// -p: Print to stdout (instead of buffer)
 	// -e: Preserve ANSI escape sequences (colors)
 	// -J: Join wrapped lines
-	// -S -: Capture entire scrollback history
+	// -S -N: Capture last N lines (negative = from end of scrollback)
 	// -t: Target session
-	cmd := exec.Command("tmux", "capture-pane", "-p", "-e", "-J", "-S", "-", "-t", sessionName)
+	startLine := fmt.Sprintf("-%d", captureLineCount)
+	cmd := exec.Command("tmux", "capture-pane", "-p", "-e", "-J", "-S", startLine, "-t", sessionName)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("capture-pane: %w", err)
