@@ -95,12 +95,13 @@ View staged, modified, and untracked files with a split-pane interface. The side
 
 ### Conversations
 
-Browse Claude Code session history with message content, token usage, and search. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
+Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Claude Code, Codex, Cursor CLI, Gemini CLI, OpenCode, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
 
 ![Conversations](docs/screenshots/sidecar-conversations.png)
 
 **Features:**
 
+- Unified view across all supported agents
 - View all sessions grouped by date
 - Search sessions with `/`
 - Expand messages to see full content

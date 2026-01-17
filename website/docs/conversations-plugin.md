@@ -5,9 +5,24 @@ title: Conversations Plugin
 
 # Conversations Plugin
 
-Browse and search your Claude Code sessions with turn-based organization, message expansion, and session analytics—see what your agent has been doing.
+Browse and search your AI coding sessions with turn-based organization, message expansion, and session analytics—see what your agents have been doing across multiple tools.
 
 ![Conversations Plugin](../../docs/screenshots/sidecar-conversations.png)
+
+## Supported Agents
+
+The Conversations plugin automatically detects and displays sessions from:
+
+| Agent | Icon | Description |
+|-------|------|-------------|
+| Claude Code | ◆ | Anthropic's CLI coding agent |
+| Codex | ▶ | OpenAI's CLI coding agent |
+| Cursor CLI | ▌ | Cursor's background agent |
+| Gemini CLI | ★ | Google's CLI coding agent |
+| OpenCode | ◇ | Open-source coding agent |
+| Warp | » | Warp terminal AI |
+
+Sessions from all detected agents appear in a unified list, with icons indicating the source.
 
 ## Overview
 
@@ -21,7 +36,7 @@ Toggle the sidebar with `\` to maximize message space.
 
 ## Session List
 
-Browse all Claude Code sessions from your local history.
+Browse all sessions from your local history across all supported agents.
 
 | Key | Action |
 |-----|--------|
@@ -48,7 +63,7 @@ Search matches session titles and conversation content.
 | Key | Action |
 |-----|--------|
 | `y` | Copy session as markdown |
-| `o` | Open session in CLI (`claude resume`) |
+| `o` | Open/resume session in CLI (agent-specific) |
 
 ## Message View
 
@@ -60,7 +75,7 @@ Two view modes for reading conversations:
 
 ### Conversation Flow
 
-Messages display in order, similar to the Claude Code web UI:
+Messages display in order, similar to chat-style interfaces:
 - User messages with prompts
 - Assistant responses with tool results collapsed
 - Expandable tool invocations
