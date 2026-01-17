@@ -89,7 +89,7 @@ For Sidecar plugins, use this structure:
 
 One-line description of what it does.
 
-![Screenshot](/img/screenshots/plugin-name.png)
+![Screenshot](../../docs/screenshots/plugin-name.png)
 
 ## Overview
 Brief explanation of the UI layout and core purpose.
@@ -221,16 +221,40 @@ footer: {
 
 ## Adding Images
 
-1. Place images in `static/img/`
-2. Reference in Markdown:
-   ```markdown
-   ![Alt text](/img/screenshot.png)
-   ```
+### Screenshot Organization
 
-Or import in JSX:
+**Website documentation screenshots** (for Docusaurus pages in `website/docs/`):
+- Store in: `docs/screenshots/` (project root)
+- Reference with: `![Alt text](../../docs/screenshots/filename.png)`
+- These are the official screenshots for the documentation site
+
+**README and other markdown screenshots** (for GitHub, repo docs, etc.):
+- Store in: `docs/screenshots/` (project root)
+- Reference with: `![Alt text](docs/screenshots/filename.png)` (from repo root)
+- Same location, different relative path based on context
+
+**General website images** (logos, icons, graphics):
+- Store in: `website/static/img/`
+- Reference with: `![Alt text](/img/filename.png)`
+
+### For AI Agents
+
+When capturing screenshots:
+- If the prompt mentions "website docs" or "Docusaurus": save to `docs/screenshots/`
+- If the prompt mentions "README" or "repo documentation": save to `docs/screenshots/`
+- The same screenshots in `docs/screenshots/` serve both website and repo docs
+
+### Usage Examples
+
+In website docs (`website/docs/*.md`):
+```markdown
+![Plugin Screenshot](../../docs/screenshots/sidecar-git.png)
+```
+
+In JSX components:
 ```jsx
-import screenshot from '@site/static/img/screenshot.png';
-<img src={screenshot} alt="Screenshot" />
+import screenshot from '@site/static/img/logo.png';
+<img src={screenshot} alt="Logo" />
 ```
 
 ## Blog Posts

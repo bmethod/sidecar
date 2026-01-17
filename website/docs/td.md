@@ -7,7 +7,7 @@ title: TD - Task Management for AI Agents
 
 A task management CLI designed specifically for AI-assisted development. When an agent's context window ends, its memory ends. TD captures the work state—what's done, what's remaining, key decisions, and uncertainties—so the next session picks up exactly where the previous one left off.
 
-![TD Monitor in Sidecar](/img/screenshots/sidecar-td.png)
+![TD Monitor in Sidecar](../../docs/screenshots/sidecar-td.png)
 
 ## The Problem
 

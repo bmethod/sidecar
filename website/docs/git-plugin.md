@@ -7,7 +7,7 @@ title: Git Plugin
 
 A full-featured git interface for staging, diffing, committing, and managing branches—all without leaving your terminal. Watch your agent's changes in real-time with side-by-side diffs and inline previews.
 
-![Git Status](/img/screenshots/sidecar-git.png)
+![Git Status](../../docs/screenshots/sidecar-git.png)
 
 ## Overview
 

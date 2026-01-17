@@ -7,7 +7,7 @@ title: Worktrees Plugin
 
 Manage multiple git worktrees with agent integration, real-time output streaming, and a Kanban board view—run parallel agents across branches.
 
-![Worktrees Plugin](/img/screenshots/sidecar-riders.png)
+![Worktrees Plugin](../../docs/screenshots/sidecar-worktrees.png)
 
 ## Overview
 

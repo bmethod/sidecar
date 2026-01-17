@@ -7,7 +7,7 @@ title: Getting Started
 
 A terminal dashboard for AI coding agents. Monitor git changes, browse conversations, track tasks, and manage worktrees—all without leaving your terminal.
 
-![Sidecar Git Status](/img/screenshots/sidecar-git.png)
+![Sidecar Git Status](../../docs/screenshots/sidecar-git.png)
 
 ## Quick Install
 
@@ -52,7 +52,7 @@ Sidecar uses a plugin architecture. Each plugin provides a focused view into you
 
 Stage files, view diffs, browse commit history. A lightweight alternative to `git status` and `git diff`.
 
-![Git Status with Diff](/img/screenshots/sidecar-git.png)
+![Git Status with Diff](../../docs/screenshots/sidecar-git.png)
 
 | Key | Action |
 |-----|--------|
@@ -63,13 +63,13 @@ Stage files, view diffs, browse commit history. A lightweight alternative to `gi
 | `c` | Commit staged changes |
 | `h/l` | Switch sidebar/diff focus |
 
-![Side-by-side Diff](/img/screenshots/sidecar-git-diff-side-by-side.png)
+![Side-by-side Diff](../../docs/screenshots/sidecar-git-diff-side-by-side.png)
 
 ### Conversations
 
 Browse AI agent session history with message content, token usage, and search.
 
-![Conversations](/img/screenshots/sidecar-conversations.png)
+![Conversations](../../docs/screenshots/sidecar-conversations.png)
 
 Supported agents:
 - Claude Code
@@ -89,7 +89,7 @@ Supported agents:
 
 Integration with [TD](https://github.com/marcus/td), a task management system for AI agents working across context windows.
 
-![TD Monitor](/img/screenshots/sidecar-td.png)
+![TD Monitor](../../docs/screenshots/sidecar-td.png)
 
 | Key | Action |
 |-----|--------|
@@ -100,7 +100,7 @@ Integration with [TD](https://github.com/marcus/td), a task management system fo
 
 Navigate project files with a collapsible tree and syntax-highlighted preview.
 
-![File Browser](/img/screenshots/sidecar-file-browser.png)
+![File Browser](../../docs/screenshots/sidecar-files.png)
 
 | Key | Action |
 |-----|--------|
