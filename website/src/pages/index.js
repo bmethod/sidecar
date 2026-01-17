@@ -669,8 +669,8 @@ export default function Home() {
               </h1>
 
               <p className="sc-subtitle">
-                Monitor agent sessions without leaving the terminal: task flow, git diffs, file browsing,
-                and conversation history--designed for the "split the terminal and ship" workflow.
+                Plan features, manage a backlog of work for agents, view diffs, search conversation history,
+                and easily manage git worktrees from a single terminal. You've never coded with AI like this before.
               </p>
 
               <div style={{ height: 32 }} />
@@ -961,8 +961,8 @@ export default function Home() {
               <div className="sc-agentCard">
                 <div className="sc-agentLogo">
                   <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="32" height="32" rx="6" fill="#D97706"/>
-                    <path d="M16 6L8 10v12l8 4 8-4V10l-8-4zm0 2.2l5.6 2.8L16 13.8l-5.6-2.8L16 8.2zM10 11.8l5 2.5v7.4l-5-2.5v-7.4zm12 0v7.4l-5 2.5v-7.4l5-2.5z" fill="white"/>
+                    <rect width="32" height="32" rx="6" fill="#D97706" />
+                    <path d="M16 6L8 10v12l8 4 8-4V10l-8-4zm0 2.2l5.6 2.8L16 13.8l-5.6-2.8L16 8.2zM10 11.8l5 2.5v7.4l-5-2.5v-7.4zm12 0v7.4l-5 2.5v-7.4l5-2.5z" fill="white" />
                   </svg>
                 </div>
                 <div className="sc-agentInfo">
@@ -974,9 +974,9 @@ export default function Home() {
               <div className="sc-agentCard">
                 <div className="sc-agentLogo">
                   <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="32" height="32" rx="6" fill="#10A37F"/>
-                    <circle cx="16" cy="16" r="8" stroke="white" strokeWidth="2" fill="none"/>
-                    <circle cx="16" cy="16" r="3" fill="white"/>
+                    <rect width="32" height="32" rx="6" fill="#10A37F" />
+                    <circle cx="16" cy="16" r="8" stroke="white" strokeWidth="2" fill="none" />
+                    <circle cx="16" cy="16" r="3" fill="white" />
                   </svg>
                 </div>
                 <div className="sc-agentInfo">
@@ -988,10 +988,10 @@ export default function Home() {
               <div className="sc-agentCard">
                 <div className="sc-agentLogo">
                   <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="32" height="32" rx="6" fill="#4285F4"/>
-                    <path d="M16 8l-6.93 12h13.86L16 8z" fill="#EA4335"/>
-                    <path d="M9.07 20L16 8v12H9.07z" fill="#FBBC05"/>
-                    <path d="M22.93 20L16 8v12h6.93z" fill="#34A853"/>
+                    <rect width="32" height="32" rx="6" fill="#4285F4" />
+                    <path d="M16 8l-6.93 12h13.86L16 8z" fill="#EA4335" />
+                    <path d="M9.07 20L16 8v12H9.07z" fill="#FBBC05" />
+                    <path d="M22.93 20L16 8v12h6.93z" fill="#34A853" />
                   </svg>
                 </div>
                 <div className="sc-agentInfo">
@@ -1003,9 +1003,9 @@ export default function Home() {
               <div className="sc-agentCard">
                 <div className="sc-agentLogo">
                   <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="32" height="32" rx="6" fill="#6366F1"/>
-                    <path d="M10 10h12v12H10V10z" stroke="white" strokeWidth="2" fill="none"/>
-                    <path d="M14 14h4v4h-4v-4z" fill="white"/>
+                    <rect width="32" height="32" rx="6" fill="#6366F1" />
+                    <path d="M10 10h12v12H10V10z" stroke="white" strokeWidth="2" fill="none" />
+                    <path d="M14 14h4v4h-4v-4z" fill="white" />
                   </svg>
                 </div>
                 <div className="sc-agentInfo">
@@ -1017,10 +1017,10 @@ export default function Home() {
               <div className="sc-agentCard">
                 <div className="sc-agentLogo">
                   <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="32" height="32" rx="6" fill="#171717"/>
-                    <path d="M8 16a8 8 0 1 1 16 0" stroke="#F7B500" strokeWidth="2.5" strokeLinecap="round"/>
-                    <circle cx="16" cy="16" r="3" fill="#F7B500"/>
-                    <path d="M16 19v5" stroke="#F7B500" strokeWidth="2" strokeLinecap="round"/>
+                    <rect width="32" height="32" rx="6" fill="#171717" />
+                    <path d="M8 16a8 8 0 1 1 16 0" stroke="#F7B500" strokeWidth="2.5" strokeLinecap="round" />
+                    <circle cx="16" cy="16" r="3" fill="#F7B500" />
+                    <path d="M16 19v5" stroke="#F7B500" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                 </div>
                 <div className="sc-agentInfo">
