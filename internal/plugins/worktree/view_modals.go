@@ -357,14 +357,13 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 	modalY := (height - modalH) / 2
 
 	// Register hit regions for interactive elements
-	// modalStyle has border(1) + padding(1) = 2 rows, but OverlayModal centers
-	// based on line count which effectively makes content start at modalY + 1
+	// modalStyle has border(1) + padding(1) = 2 rows before content starts
 	// Track Y position through modal content structure
 	// IMPORTANT: inputStyle/inputFocusedStyle add a border, making inputs 3 lines tall
 	// (top border + content + bottom border)
 	hitX := modalX + 3 // border + padding for left edge
 	hitW := modalW - 6 // width minus border+padding on both sides
-	currentY := modalY + 1
+	currentY := modalY + 2 // border(1) + padding(1)
 
 	// Title "Create New Worktree" + blank
 	currentY += 2
@@ -620,8 +619,8 @@ func (p *Plugin) renderTaskLinkModal(width, height int) string {
 
 	// Register hit regions for task dropdown items
 	// Content: title(1) + blank(1) + label(1) + bordered-input(3) = 6 lines before dropdown
-	// Border offset is 1 (adjusted for OverlayModal centering)
-	dropdownStartY := modalY + 1 + 6 // border offset + content lines to dropdown
+	// Border offset is 2: border(1) + padding(1)
+	dropdownStartY := modalY + 2 + 6 // border(1) + padding(1) + content lines to dropdown
 
 	// Determine which list to use for hit regions
 	tasks := p.taskSearchFiltered
@@ -954,8 +953,8 @@ func (p *Plugin) renderAgentChoiceModal(width, height int) string {
 
 	// Hit regions for options (inside modal content area)
 	// Content lines: title(1) + blank(1) + message(2) + blank(1) = 5 lines before options
-	// Border offset is 1 (adjusted for OverlayModal centering)
-	optionY := modalStartY + 1 + 5 // border offset + header lines
+	// Border offset is 2: border(1) + padding(1)
+	optionY := modalStartY + 2 + 5 // border(1) + padding(1) + header lines
 	optionX := modalStartX + 3     // border + padding + "  " prefix
 	for i := range options {
 		p.mouseHandler.HitMap.AddRect(regionAgentChoiceOption, optionX, optionY+i, modalW-6, 1, i)
@@ -1382,7 +1381,7 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 		modalY := (height - modalH) / 2
 
 		// Calculate position of merge method radio options
-		// Border offset is 1 (adjusted for OverlayModal centering)
+		// Border offset is 2: border(1) + padding(1)
 		// Content structure before step content:
 		// - Title (1 line)
 		// - blank (1 line)
@@ -1396,7 +1395,7 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 		}
 		// Lines before step content: 1 + 1 + progressSteps + 1 + 1 + 2 = progressSteps + 6
 		// Then "Choose Merge Method:" (1) + blank (1) = 2 more lines before options
-		option1Y := modalY + 1 + progressSteps + 6 + 2 // border offset + header content + step header + blank
+		option1Y := modalY + 2 + progressSteps + 6 + 2 // border(1) + padding(1) + header content + step header + blank
 		option2Y := option1Y + 3                        // Option 1 text + description + blank
 
 		p.mouseHandler.HitMap.AddRect(regionMergeMethodOption, modalX+2, option1Y, modalW-6, 1, 0) // Create PR
@@ -1410,11 +1409,11 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 		modalY := (height - modalH) / 2
 
 		// Radio buttons position calculated from bottom of content
-		// Border offset is 1 (adjusted for OverlayModal centering)
+		// Border offset is 2: border(1) + padding(1)
 		contentLines := strings.Count(content, "\n")
 		// Radio buttons are approximately at contentLines - 7 (from bottom)
 		// "Delete worktree" and "Keep worktree" options
-		radio1Y := modalY + 1 + contentLines - 7
+		radio1Y := modalY + 2 + contentLines - 7
 		radio2Y := radio1Y + 1
 		p.mouseHandler.HitMap.AddRect(regionMergeRadio, modalX+2, radio1Y, modalW-6, 1, 0) // Delete
 		p.mouseHandler.HitMap.AddRect(regionMergeRadio, modalX+2, radio2Y, modalW-6, 1, 1) // Keep
@@ -1428,8 +1427,8 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 
 		// Calculate positions based on content structure
 		// Title(1) + blank(1) + separator(1) + blank(1) + header(1) + subtext(1) + blank(1) = 7 lines before checkboxes
-		// Border offset is 1 (adjusted for OverlayModal centering)
-		checkboxBaseY := modalY + 1 + 7 // border offset + content lines to checkboxes
+		// Border offset is 2: border(1) + padding(1)
+		checkboxBaseY := modalY + 2 + 7 // border(1) + padding(1) + content lines to checkboxes
 
 		// Three cleanup checkbox options (2 lines each: checkbox + hint)
 		for i := 0; i < 3; i++ {
