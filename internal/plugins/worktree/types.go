@@ -1,7 +1,7 @@
 package worktree
 
 import (
-	"crypto/sha256"
+	"hash/maphash"
 	"strings"
 	"sync"
 	"time"
@@ -11,15 +11,15 @@ import (
 type ViewMode int
 
 const (
-	ViewModeList            ViewMode = iota // List view (default)
-	ViewModeKanban                          // Kanban board view
-	ViewModeCreate                          // New worktree modal
-	ViewModeTaskLink                        // Task link modal (for existing worktrees)
-	ViewModeMerge                           // Merge workflow modal
-	ViewModeAgentChoice                     // Agent action choice modal (attach/restart)
-	ViewModeConfirmDelete                   // Delete confirmation modal
-	ViewModeCommitForMerge                  // Commit modal before merge workflow
-	ViewModePromptPicker                    // Prompt template picker modal
+	ViewModeList           ViewMode = iota // List view (default)
+	ViewModeKanban                         // Kanban board view
+	ViewModeCreate                         // New worktree modal
+	ViewModeTaskLink                       // Task link modal (for existing worktrees)
+	ViewModeMerge                          // Merge workflow modal
+	ViewModeAgentChoice                    // Agent action choice modal (attach/restart)
+	ViewModeConfirmDelete                  // Delete confirmation modal
+	ViewModeCommitForMerge                 // Commit modal before merge workflow
+	ViewModePromptPicker                   // Prompt template picker modal
 )
 
 // FocusPane represents which pane is active in the split view.
@@ -179,10 +179,10 @@ type Worktree struct {
 
 // Agent represents an AI coding agent process.
 type Agent struct {
-	Type        AgentType     // claude, codex, aider, gemini
-	TmuxSession string        // tmux session name
-	TmuxPane    string        // Pane identifier
-	PID         int           // Process ID (if available)
+	Type        AgentType // claude, codex, aider, gemini
+	TmuxSession string    // tmux session name
+	TmuxPane    string    // Pane identifier
+	PID         int       // Process ID (if available)
 	StartedAt   time.Time
 	LastOutput  time.Time     // Last time output was detected
 	OutputBuf   *OutputBuffer // Last N lines of output
@@ -224,14 +224,17 @@ type OutputBuffer struct {
 	mu       sync.Mutex
 	lines    []string
 	cap      int
-	lastHash [32]byte // SHA256 of last content for change detection
+	lastHash uint64       // Hash of last content for change detection
+	lastLen  int          // Length of last content (collision guard)
+	hashSeed maphash.Seed // Seed for stable hashing
 }
 
 // NewOutputBuffer creates a new output buffer with the given capacity.
 func NewOutputBuffer(capacity int) *OutputBuffer {
 	return &OutputBuffer{
-		lines: make([]string, 0, capacity),
-		cap:   capacity,
+		lines:    make([]string, 0, capacity),
+		cap:      capacity,
+		hashSeed: maphash.MakeSeed(),
 	}
 }
 
@@ -242,13 +245,14 @@ func (b *OutputBuffer) Update(content string) bool {
 	defer b.mu.Unlock()
 
 	// Compute hash of new content
-	hash := sha256.Sum256([]byte(content))
-	if hash == b.lastHash {
+	hash := maphash.String(b.hashSeed, content)
+	if hash == b.lastHash && len(content) == b.lastLen {
 		return false // Content unchanged
 	}
 
 	// Content changed - update hash and replace lines
 	b.lastHash = hash
+	b.lastLen = len(content)
 	b.lines = strings.Split(content, "\n")
 
 	// Trim to capacity (keep most recent lines)
@@ -319,7 +323,8 @@ func (b *OutputBuffer) Clear() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.lines = b.lines[:0]
-	b.lastHash = [32]byte{} // Reset hash
+	b.lastHash = 0
+	b.lastLen = 0
 }
 
 // Len returns the number of lines in the buffer.

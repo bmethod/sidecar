@@ -106,7 +106,8 @@ type Plugin struct {
 	kanbanRow int // Current row within the column
 
 	// Agent state
-	attachedSession string // Name of worktree we're attached to (pauses polling)
+	attachedSession     string // Name of worktree we're attached to (pauses polling)
+	tmuxCaptureMaxBytes int    // Cap for tmux capture output (bytes)
 
 	// Mouse support
 	mouseHandler *mouse.Handler
@@ -212,18 +213,19 @@ func New() *Plugin {
 	mdRenderer, _ := markdown.NewRenderer()
 
 	return &Plugin{
-		worktrees:        make([]*Worktree, 0),
-		agents:           make(map[string]*Agent),
-		managedSessions:  make(map[string]bool),
-		viewMode:         ViewModeList,
-		activePane:       PaneSidebar,
-		previewTab:       PreviewTabOutput,
-		mouseHandler:     mouse.NewHandler(),
-		sidebarWidth:     40,   // Default 40% sidebar
-		sidebarVisible:   true, // Sidebar visible by default
-		autoScrollOutput: true, // Auto-scroll to follow agent output
-		markdownRenderer: mdRenderer,
-		taskMarkdownMode: true, // Default to rendered mode
+		worktrees:           make([]*Worktree, 0),
+		agents:              make(map[string]*Agent),
+		managedSessions:     make(map[string]bool),
+		viewMode:            ViewModeList,
+		activePane:          PaneSidebar,
+		previewTab:          PreviewTabOutput,
+		mouseHandler:        mouse.NewHandler(),
+		sidebarWidth:        40,   // Default 40% sidebar
+		sidebarVisible:      true, // Sidebar visible by default
+		autoScrollOutput:    true, // Auto-scroll to follow agent output
+		tmuxCaptureMaxBytes: defaultTmuxCaptureMaxBytes,
+		markdownRenderer:    mdRenderer,
+		taskMarkdownMode:    true, // Default to rendered mode
 	}
 }
 
@@ -245,6 +247,9 @@ func (p *Plugin) SetFocused(f bool) { p.focused = f }
 // Init initializes the plugin with context.
 func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.ctx = ctx
+	if ctx.Config != nil && ctx.Config.Plugins.Worktree.TmuxCaptureMaxBytes > 0 {
+		p.tmuxCaptureMaxBytes = ctx.Config.Plugins.Worktree.TmuxCaptureMaxBytes
+	}
 
 	// Register dynamic keybindings
 	if ctx.Keymap != nil {

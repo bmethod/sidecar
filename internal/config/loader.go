@@ -34,7 +34,8 @@ type rawPluginsConfig struct {
 }
 
 type rawWorktreeConfig struct {
-	DirPrefix *bool `json:"dirPrefix"`
+	DirPrefix           *bool `json:"dirPrefix"`
+	TmuxCaptureMaxBytes *int  `json:"tmuxCaptureMaxBytes"`
 }
 
 type rawGitStatusConfig struct {
@@ -142,6 +143,9 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	// Worktree
 	if raw.Plugins.Worktree.DirPrefix != nil {
 		cfg.Plugins.Worktree.DirPrefix = *raw.Plugins.Worktree.DirPrefix
+	}
+	if raw.Plugins.Worktree.TmuxCaptureMaxBytes != nil {
+		cfg.Plugins.Worktree.TmuxCaptureMaxBytes = *raw.Plugins.Worktree.TmuxCaptureMaxBytes
 	}
 
 	// Keymap

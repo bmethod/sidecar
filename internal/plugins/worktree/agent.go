@@ -123,6 +123,9 @@ const (
 	// We only need recent output for status detection and display
 	captureLineCount = 600
 
+	// Hard cap on captured output size to avoid runaway memory for TUI-heavy panes.
+	defaultTmuxCaptureMaxBytes = 2 * 1024 * 1024
+
 	// Timeout for tmux capture commands to avoid blocking on hung sessions
 	tmuxCaptureTimeout      = 2 * time.Second
 	tmuxBatchCaptureTimeout = 3 * time.Second
@@ -567,6 +570,8 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 			return pollAgentMsg{WorktreeName: worktreeName}
 		}
 
+		output = trimCapturedOutput(output, p.tmuxCaptureMaxBytes)
+
 		// Use hash-based change detection to skip processing if content unchanged
 		if wt.Agent.OutputBuf != nil && !wt.Agent.OutputBuf.Update(output) {
 			// Content unchanged - signal to schedule next poll with delay
@@ -702,6 +707,17 @@ done
 	}
 
 	return results, nil
+}
+
+func trimCapturedOutput(output string, maxBytes int) string {
+	if maxBytes <= 0 || len(output) <= maxBytes {
+		return output
+	}
+	trimmed := tailUTF8Safe(output, maxBytes)
+	if nl := strings.Index(trimmed, "\n"); nl >= 0 && nl+1 < len(trimmed) {
+		return trimmed[nl+1:]
+	}
+	return trimmed
 }
 
 // tailUTF8Safe returns the last n bytes of s, adjusted to not split UTF-8 chars.

@@ -48,6 +48,8 @@ type WorktreePluginConfig struct {
 	// DirPrefix prefixes worktree directory names with the repo name (e.g., 'myrepo-feature-auth')
 	// This helps associate conversations with the repo after worktree deletion. Default: true.
 	DirPrefix bool `json:"dirPrefix"`
+	// TmuxCaptureMaxBytes caps tmux pane capture size for the preview pane. Default: 2MB.
+	TmuxCaptureMaxBytes int `json:"tmuxCaptureMaxBytes"`
 }
 
 // KeymapConfig holds key binding overrides.
@@ -90,7 +92,8 @@ func Default() *Config {
 				ClaudeDataDir: "~/.claude",
 			},
 			Worktree: WorktreePluginConfig{
-				DirPrefix: true,
+				DirPrefix:           true,
+				TmuxCaptureMaxBytes: 2 * 1024 * 1024,
 			},
 		},
 		Keymap: KeymapConfig{
@@ -114,6 +117,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Plugins.TDMonitor.RefreshInterval < 0 {
 		c.Plugins.TDMonitor.RefreshInterval = 2 * time.Second
+	}
+	if c.Plugins.Worktree.TmuxCaptureMaxBytes <= 0 {
+		c.Plugins.Worktree.TmuxCaptureMaxBytes = 2 * 1024 * 1024
 	}
 	return nil
 }
