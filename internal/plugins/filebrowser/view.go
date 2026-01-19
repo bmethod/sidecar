@@ -121,10 +121,10 @@ func (p *Plugin) renderView() string {
 
 // renderNormalPanes renders the standard 2-pane layout without modals.
 func (p *Plugin) renderNormalPanes() string {
-	// Account for input bar if active (content search or file op)
+	// Account for input bar if active (content search or file op or line jump)
 	// Note: tree search bar is rendered inside the tree pane, not here
 	inputBarHeight := 0
-	if p.contentSearchMode || p.fileOpMode != FileOpNone {
+	if p.contentSearchMode || p.fileOpMode != FileOpNone || p.lineJumpMode {
 		inputBarHeight = 1
 		// Add extra line for error message if present
 		if p.fileOpMode != FileOpNone && p.fileOpError != "" {
@@ -166,6 +166,11 @@ func (p *Plugin) renderNormalPanes() string {
 		// Add file operation bar if in file operation mode
 		if p.fileOpMode != FileOpNone {
 			parts = append(parts, p.renderFileOpBar())
+		}
+
+		// Add line jump bar if in line jump mode
+		if p.lineJumpMode {
+			parts = append(parts, p.renderLineJumpBar())
 		}
 
 		parts = append(parts, rightPane)
@@ -210,6 +215,11 @@ func (p *Plugin) renderNormalPanes() string {
 	// Add file operation bar if in file operation mode
 	if p.fileOpMode != FileOpNone {
 		parts = append(parts, p.renderFileOpBar())
+	}
+
+	// Add line jump bar if in line jump mode
+	if p.lineJumpMode {
+		parts = append(parts, p.renderLineJumpBar())
 	}
 
 	parts = append(parts, panes)
@@ -1049,4 +1059,11 @@ func (p *Plugin) renderImagePreview() string {
 	}
 
 	return result.Content
+}
+
+// renderLineJumpBar renders the line jump input bar.
+func (p *Plugin) renderLineJumpBar() string {
+	cursor := "█"
+	inputLine := fmt.Sprintf(" :%s%s", p.lineJumpBuffer, cursor)
+	return styles.ModalTitle.Render(inputLine)
 }

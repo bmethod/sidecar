@@ -3,6 +3,7 @@ package filebrowser
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/atotto/clipboard"
@@ -48,6 +49,11 @@ func (p *Plugin) handleKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	// Handle file operation mode (move/rename/create/delete)
 	if p.fileOpMode != FileOpNone {
 		return p.handleFileOpKey(msg)
+	}
+
+	// Handle line jump mode
+	if p.lineJumpMode {
+		return p.handleLineJumpKey(msg)
 	}
 
 	// Handle content search mode input (preview pane search)
@@ -304,6 +310,10 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		newMode := p.tree.SortMode.Next()
 		p.tree.SetSortMode(newMode)
 
+	case ":":
+		p.lineJumpMode = true
+		p.lineJumpBuffer = ""
+
 	case "/":
 		p.searchMode = true
 		p.searchQuery = ""
@@ -404,6 +414,10 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 		if p.previewFile != "" {
 			return p, p.openFile(p.previewFile)
 		}
+
+	case ":":
+		p.lineJumpMode = true
+		p.lineJumpBuffer = ""
 
 	case "/":
 		// Enter content search mode if we have content to search
@@ -1135,6 +1149,91 @@ func (p *Plugin) handleBlameKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			line := p.blameState.Lines[p.blameState.Cursor]
 			info := fmt.Sprintf("%s by %s (%s)", line.CommitHash, line.Author, RelativeTime(line.AuthorTime))
 			return p, appmsg.ShowToast(info, 3*time.Second)
+		}
+	}
+
+	return p, nil
+}
+
+// handleLineJumpKey handles key input during line jump mode (vim-style :<number>).
+func (p *Plugin) handleLineJumpKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "esc":
+		p.lineJumpMode = false
+		p.lineJumpBuffer = ""
+		return p, nil
+
+	case "enter":
+		if p.lineJumpBuffer == "" {
+			p.lineJumpMode = false
+			return p, nil
+		}
+
+		lineNum, err := strconv.Atoi(p.lineJumpBuffer)
+		if err != nil {
+			p.lineJumpMode = false
+			p.lineJumpBuffer = ""
+			return p, appmsg.ShowToast("Invalid line number", 2*time.Second)
+		}
+
+		// Execute jump (1-based input -> 0-based index)
+		target := lineNum - 1
+
+		if p.activePane == PanePreview {
+			// Jump in preview pane
+			lines := p.getPreviewLines()
+			if len(lines) > 0 {
+				if target < 0 {
+					target = 0
+				}
+				if target >= len(lines) {
+					target = len(lines) - 1
+				}
+				p.previewScroll = target
+				
+				// Ensure visible
+				visibleHeight := p.visibleContentHeight()
+				maxScroll := len(lines) - visibleHeight
+				if maxScroll < 0 {
+					maxScroll = 0
+				}
+				if p.previewScroll > maxScroll {
+					p.previewScroll = maxScroll
+				}
+			}
+		} else {
+			// Jump in tree pane
+			if p.tree.Len() > 0 {
+				if target < 0 {
+					target = 0
+				}
+				if target >= p.tree.Len() {
+					target = p.tree.Len() - 1
+				}
+				p.treeCursor = target
+				p.ensureTreeCursorVisible()
+			}
+		}
+
+		p.lineJumpMode = false
+		p.lineJumpBuffer = ""
+		return p, nil
+
+	case "backspace":
+		if len(p.lineJumpBuffer) > 0 {
+			p.lineJumpBuffer = p.lineJumpBuffer[:len(p.lineJumpBuffer)-1]
+		} else {
+			// If buffer empty, backspace exits mode (like vim)
+			p.lineJumpMode = false
+		}
+		return p, nil
+
+	default:
+		// Only accept numbers
+		if len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
+			p.lineJumpBuffer += key
 		}
 	}
 

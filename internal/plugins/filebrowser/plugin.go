@@ -193,6 +193,10 @@ type Plugin struct {
 	fileOpButtonFocus   int             // Button focus: 0=input, 1=confirm, 2=cancel
 	fileOpButtonHover   int             // Button hover: 0=none, 1=confirm, 2=cancel
 
+	// Line jump state (vim-style :<number>)
+	lineJumpMode   bool
+	lineJumpBuffer string
+
 	// Path auto-complete state (for move modal)
 	dirCache              []string // Cached directory paths
 	fileOpSuggestions     []string // Current filtered suggestions
@@ -614,6 +618,9 @@ func (p *Plugin) Commands() []plugin.Command {
 		// File operation commands (move/rename/create/delete)
 		{ID: "confirm", Name: "Confirm", Description: "Confirm operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
 		{ID: "cancel", Name: "Cancel", Description: "Cancel operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
+		// Line jump commands
+		{ID: "confirm", Name: "Go", Description: "Jump to line", Category: plugin.CategoryNavigation, Context: "file-browser-line-jump", Priority: 1},
+		{ID: "cancel", Name: "Cancel", Description: "Cancel jump", Category: plugin.CategoryActions, Context: "file-browser-line-jump", Priority: 1},
 		// Info modal commands
 		{ID: "close", Name: "Close", Description: "Close info modal", Category: plugin.CategoryActions, Context: "file-browser-info", Priority: 1},
 		// Blame view commands
@@ -639,6 +646,9 @@ func (p *Plugin) FocusContext() string {
 	}
 	if p.fileOpMode != FileOpNone {
 		return "file-browser-file-op"
+	}
+	if p.lineJumpMode {
+		return "file-browser-line-jump"
 	}
 	if p.contentSearchMode {
 		return "file-browser-content-search"

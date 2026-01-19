@@ -520,6 +520,7 @@ func isTextInputContext(ctx string) bool {
 		"file-browser-search", "file-browser-content-search",
 		"file-browser-quick-open", "file-browser-file-op",
 		"file-browser-project-search",
+		"file-browser-line-jump",
 		"td-search",
 		"worktree-create", "worktree-task-link":
 		return true
