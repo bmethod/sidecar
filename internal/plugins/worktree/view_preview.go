@@ -12,9 +12,9 @@ import (
 func (p *Plugin) renderPreviewContent(width, height int) string {
 	var lines []string
 
-	// Hide tabs when no worktree is selected - show welcome guide instead
+	// Show welcome guide only when no worktree AND no shell is selected
 	wt := p.selectedWorktree()
-	if wt == nil {
+	if wt == nil && !p.shellSelected {
 		return p.truncateAllLines(p.renderWelcomeGuide(width, height), width)
 	}
 
@@ -147,6 +147,11 @@ func (p *Plugin) renderTabs(width int) string {
 
 // renderOutputContent renders agent output.
 func (p *Plugin) renderOutputContent(width, height int) string {
+	// Handle shell output when shell is selected
+	if p.shellSelected {
+		return p.renderShellOutput(width, height)
+	}
+
 	wt := p.selectedWorktree()
 	if wt == nil {
 		return dimText("No worktree selected")
@@ -209,6 +214,105 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 	}
 
 	return hint + "\n" + strings.Join(displayLines, "\n")
+}
+
+// renderShellOutput renders project shell output.
+func (p *Plugin) renderShellOutput(width, height int) string {
+	if p.shellSession == nil {
+		return p.renderShellPrimer(width, height)
+	}
+
+	// Hint for tmux detach
+	hint := dimText("enter to attach • Ctrl-b d to detach")
+	height-- // Reserve line for hint
+
+	if p.shellSession.OutputBuf == nil {
+		return hint + "\n" + dimText("No output yet")
+	}
+
+	lineCount := p.shellSession.OutputBuf.LineCount()
+	if lineCount == 0 {
+		return hint + "\n" + dimText("No output yet")
+	}
+
+	var start, end int
+	if p.autoScrollOutput {
+		// Auto-scroll: show newest content (last height lines)
+		start = lineCount - height
+		if start < 0 {
+			start = 0
+		}
+		end = lineCount
+	} else {
+		// Manual scroll: previewOffset is lines from bottom
+		start = lineCount - height - p.previewOffset
+		if start < 0 {
+			start = 0
+		}
+		end = start + height
+		if end > lineCount {
+			end = lineCount
+		}
+	}
+
+	// Get only the lines we need
+	lines := p.shellSession.OutputBuf.LinesRange(start, end)
+	if len(lines) == 0 {
+		return hint + "\n" + dimText("No output yet")
+	}
+
+	// Apply horizontal offset and truncate each line
+	displayLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		displayLine := expandTabs(line, tabStopWidth)
+		displayLine = p.truncateCache.TruncateLeftRight(displayLine, p.previewHorizOffset, width)
+		displayLines = append(displayLines, displayLine)
+	}
+
+	return hint + "\n" + strings.Join(displayLines, "\n")
+}
+
+// renderShellPrimer renders a helpful guide when no shell session exists.
+func (p *Plugin) renderShellPrimer(width, height int) string {
+	var lines []string
+
+	// Section style
+	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("62"))
+
+	// Title
+	lines = append(lines, sectionStyle.Render("Project Shell"))
+	lines = append(lines, "")
+
+	// Description
+	lines = append(lines, dimText("A tmux session in your project directory for running"))
+	lines = append(lines, dimText("builds, dev servers, or quick terminal tasks."))
+	lines = append(lines, "")
+
+	// Quick start
+	lines = append(lines, sectionStyle.Render("Quick Start"))
+	lines = append(lines, dimText("  Enter         Create and attach to shell"))
+	lines = append(lines, dimText("  K             Kill shell session"))
+	lines = append(lines, dimText("  Ctrl-b d      Detach (return to sidecar)"))
+	lines = append(lines, "")
+	lines = append(lines, strings.Repeat("─", min(width-4, 50)))
+	lines = append(lines, "")
+
+	// Shell vs Worktrees explanation
+	lines = append(lines, sectionStyle.Render("Shell vs Worktrees"))
+	lines = append(lines, "")
+	lines = append(lines, dimText("Shell: A single terminal in your project root."))
+	lines = append(lines, dimText("  Use for dev servers, builds, quick commands."))
+	lines = append(lines, "")
+	lines = append(lines, dimText("Worktrees: Separate git working directories, each"))
+	lines = append(lines, dimText("  with its own branch. Use for parallel development"))
+	lines = append(lines, dimText("  or running AI agents on isolated tasks."))
+	lines = append(lines, "")
+
+	// How to create worktree
+	lines = append(lines, sectionStyle.Render("Create a Worktree"))
+	lines = append(lines, dimText("  Press 'n' or click New in the sidebar"))
+
+	return strings.Join(lines, "\n")
 }
 
 // renderCommitStatusHeader renders the commit status header for diff view.

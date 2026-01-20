@@ -111,6 +111,7 @@ const (
 	AgentCursor   AgentType = "cursor"   // Cursor Agent
 	AgentOpenCode AgentType = "opencode" // OpenCode
 	AgentCustom   AgentType = "custom"   // Custom command
+	AgentShell    AgentType = "shell"    // Project shell (not an AI agent)
 )
 
 // SkipPermissionsFlags maps agent types to their skip-permissions CLI flags.
@@ -131,6 +132,7 @@ var AgentDisplayNames = map[AgentType]string{
 	AgentGemini:   "Gemini CLI",
 	AgentCursor:   "Cursor Agent",
 	AgentOpenCode: "OpenCode",
+	AgentShell:    "Project Shell",
 }
 
 // AgentCommands maps agent types to their CLI commands.

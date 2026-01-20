@@ -105,6 +105,22 @@ func (p *Plugin) Commands() []plugin.Command {
 			{ID: "toggle-sidebar", Name: "Sidebar", Description: "Toggle sidebar visibility", Context: "worktree-list", Priority: 3},
 			{ID: "refresh", Name: "Refresh", Description: "Refresh worktree list", Context: "worktree-list", Priority: 4},
 		}
+
+		// Shell-specific commands when shell is selected
+		if p.shellSelected {
+			if p.shellSession == nil {
+				cmds = append(cmds,
+					plugin.Command{ID: "create-shell", Name: "Create", Description: "Create shell session", Context: "worktree-list", Priority: 10},
+				)
+			} else {
+				cmds = append(cmds,
+					plugin.Command{ID: "attach-shell", Name: "Attach", Description: "Attach to shell", Context: "worktree-list", Priority: 10},
+					plugin.Command{ID: "kill-shell", Name: "Kill", Description: "Kill shell session", Context: "worktree-list", Priority: 11},
+				)
+			}
+			return cmds
+		}
+
 		wt := p.selectedWorktree()
 		if wt != nil {
 			// Agent commands first (most context-dependent, highest visibility)

@@ -2,6 +2,7 @@ package worktree
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -199,10 +200,23 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 	// Calculate visible items (each item is 2 lines)
 	contentHeight := height - 2 // header + empty line
 	itemHeight := 2             // Each worktree item takes 2 lines
-	p.visibleCount = contentHeight / itemHeight
+
+	// === Render shell entry (always first) ===
+	shellLine := p.renderShellEntry(p.shellSelected, width)
+	lines = append(lines, shellLine)
+	// Register hit region for shell entry (special index -1)
+	p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, width, itemHeight, -1)
+	currentY += itemHeight
+
+	// Add separator line after shell
+	lines = append(lines, styles.Muted.Render(strings.Repeat("─", width)))
+	currentY++
+
+	// Adjust visible count for shell entry + separator (3 lines taken)
+	p.visibleCount = (contentHeight - 3) / itemHeight
 
 	// Render worktree items
-	if len(p.worktrees) == 0 {
+	if len(p.worktrees) == 0 && !p.shellSelected {
 		// Calculate vertical centering for empty state
 		emptyStateHeight := 2 // "No worktrees" + "Press 'n'..."
 		emptyStartY := (contentHeight - emptyStateHeight) / 2
@@ -232,7 +246,9 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 	} else {
 		for i := p.scrollOffset; i < len(p.worktrees) && i < p.scrollOffset+p.visibleCount; i++ {
 			wt := p.worktrees[i]
-			line := p.renderWorktreeItem(wt, i == p.selectedIdx, width)
+			// Only show as selected if not shellSelected AND index matches
+			selected := !p.shellSelected && i == p.selectedIdx
+			line := p.renderWorktreeItem(wt, selected, width)
 
 			// Register hit region with ABSOLUTE index
 			p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, width, itemHeight, i)
@@ -414,6 +430,77 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 	}
 	line2 := "   " + strings.Join(styledParts, "  ")
 
+	content := line1 + "\n" + line2
+	return styles.ListItemNormal.Width(width).Render(content)
+}
+
+// renderShellEntry renders the project shell entry (always first in list).
+func (p *Plugin) renderShellEntry(selected bool, width int) string {
+	isActiveFocus := selected && p.activePane == PaneSidebar
+
+	// Determine icon based on session state
+	var statusIcon string
+	var statusStyle lipgloss.Style
+	if p.shellSession != nil {
+		statusIcon = "●" // Session running
+		statusStyle = styles.StatusCompleted // Green
+	} else {
+		statusIcon = "○" // No session
+		statusStyle = styles.Muted
+	}
+
+	// Project name from working directory
+	projectName := "Project Shell"
+	if p.ctx != nil {
+		projectName = filepath.Base(p.ctx.WorkDir)
+	}
+
+	// Build second line
+	var statusText string
+	if p.shellSession != nil {
+		statusText = "shell · running"
+	} else {
+		statusText = "shell · no session"
+	}
+
+	// Calculate layout
+	timeStr := "" // No time for shell
+	maxNameWidth := width - 4 - 2 // icon + padding
+	nameRunes := []rune(projectName)
+	if len(nameRunes) > maxNameWidth {
+		projectName = string(nameRunes[:maxNameWidth-1]) + "…"
+	}
+
+	// Build lines
+	if selected {
+		// Selected style
+		line1 := fmt.Sprintf(" %s %s", statusIcon, projectName)
+		line1Width := lipgloss.Width(line1)
+		if line1Width < width {
+			line1 = line1 + strings.Repeat(" ", width-line1Width-len(timeStr))
+		}
+		line2 := "   " + statusText
+		line2Width := lipgloss.Width(line2)
+		if line2Width < width {
+			line2 = line2 + strings.Repeat(" ", width-line2Width)
+		}
+		content := line1 + "\n" + line2
+
+		if isActiveFocus {
+			return styles.ListItemSelected.Width(width).Render(content)
+		}
+		// Dimmed selection style
+		dimmedSelectedStyle := lipgloss.NewStyle().
+			Background(lipgloss.Color("237")).
+			Foreground(lipgloss.Color("252")).
+			Width(width)
+		return dimmedSelectedStyle.Render(content)
+	}
+
+	// Not selected - use styled icon
+	icon := statusStyle.Render(statusIcon)
+	line1 := fmt.Sprintf(" %s %s", icon, projectName)
+	line2 := "   " + dimText(statusText)
 	content := line1 + "\n" + line2
 	return styles.ListItemNormal.Width(width).Render(content)
 }

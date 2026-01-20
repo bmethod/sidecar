@@ -209,6 +209,11 @@ type Plugin struct {
 
 	// Sidebar header hover state
 	hoverNewButton bool
+
+	// Project shell session (not a git worktree, but a tmux session in project root)
+	shellSession     *Agent // Reuse Agent struct for tmux session
+	shellSessionName string // "sidecar-sh-{project}"
+	shellSelected    bool   // True when shell entry is selected (vs a worktree)
 }
 
 // New creates a new worktree manager plugin.
@@ -231,6 +236,7 @@ func New() *Plugin {
 		truncateCache:       ui.NewTruncateCache(1000), // Cache up to 1000 truncations
 		markdownRenderer:    mdRenderer,
 		taskMarkdownMode:    true, // Default to rendered mode
+		shellSelected:       true, // Shell entry selected by default (first item)
 	}
 }
 
@@ -264,6 +270,14 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.worktrees = make([]*Worktree, 0)
 	p.attachedSession = ""
 
+	// Reset shell state before initializing for new project (critical for project switching)
+	// Without this, shell session from previous project persists incorrectly
+	p.shellSession = nil
+	p.shellSessionName = ""
+
+	// Initialize shell session for this project
+	p.initShellSession()
+
 	// Register dynamic keybindings
 	if ctx.Keymap != nil {
 		// Sidebar list context
@@ -294,6 +308,9 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		ctx.Keymap.RegisterPluginBinding("Y", "approve-all", "worktree-preview")
 		ctx.Keymap.RegisterPluginBinding("N", "reject", "worktree-list")
 		ctx.Keymap.RegisterPluginBinding("N", "reject", "worktree-preview")
+
+		// Shell control binding (kill shell session)
+		ctx.Keymap.RegisterPluginBinding("K", "kill-shell", "worktree-list")
 
 		// Merge workflow binding
 		ctx.Keymap.RegisterPluginBinding("m", "merge-workflow", "worktree-list")
@@ -351,8 +368,17 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 
 // Start begins async operations.
 func (p *Plugin) Start() tea.Cmd {
-	// Only refresh worktrees - reconnectAgents will be called after worktrees are loaded
-	return p.refreshWorktrees()
+	var cmds []tea.Cmd
+
+	// Refresh worktrees - reconnectAgents will be called after worktrees are loaded
+	cmds = append(cmds, p.refreshWorktrees())
+
+	// Start shell polling immediately if session exists (so preview shows content right away)
+	if p.shellSession != nil {
+		cmds = append(cmds, p.pollShellSession())
+	}
+
+	return tea.Batch(cmds...)
 }
 
 // Stop cleans up plugin resources.
@@ -361,7 +387,11 @@ func (p *Plugin) Stop() {
 }
 
 // selectedWorktree returns the currently selected worktree.
+// Returns nil if shell entry is selected (shell is not a worktree).
 func (p *Plugin) selectedWorktree() *Worktree {
+	if p.shellSelected {
+		return nil
+	}
 	if p.selectedIdx < 0 || p.selectedIdx >= len(p.worktrees) {
 		return nil
 	}
@@ -538,17 +568,38 @@ func (p *Plugin) toggleSidebar() {
 }
 
 // moveCursor moves the selection cursor.
+// Shell entry is conceptually at index -1 (before all worktrees).
 func (p *Plugin) moveCursor(delta int) {
+	oldShellSelected := p.shellSelected
 	oldIdx := p.selectedIdx
-	p.selectedIdx += delta
-	if p.selectedIdx < 0 {
-		p.selectedIdx = 0
+
+	if p.shellSelected {
+		// Currently on shell entry
+		if delta > 0 && len(p.worktrees) > 0 {
+			// Moving down from shell to first worktree
+			p.shellSelected = false
+			p.selectedIdx = 0
+		}
+		// Moving up from shell stays on shell (already at top)
+	} else {
+		// Currently on a worktree
+		if delta < 0 && p.selectedIdx == 0 {
+			// Moving up from first worktree to shell
+			p.shellSelected = true
+		} else {
+			// Normal worktree navigation
+			p.selectedIdx += delta
+			if p.selectedIdx < 0 {
+				p.selectedIdx = 0
+			}
+			if p.selectedIdx >= len(p.worktrees) {
+				p.selectedIdx = len(p.worktrees) - 1
+			}
+		}
 	}
-	if p.selectedIdx >= len(p.worktrees) {
-		p.selectedIdx = len(p.worktrees) - 1
-	}
-	// Reset preview scroll state when changing worktree selection
-	if p.selectedIdx != oldIdx {
+
+	// Reset preview scroll state when changing selection
+	if p.shellSelected != oldShellSelected || p.selectedIdx != oldIdx {
 		p.previewOffset = 0
 		p.previewHorizOffset = 0
 		p.autoScrollOutput = true
@@ -601,6 +652,12 @@ func (p *Plugin) cyclePreviewTab(delta int) tea.Cmd {
 // Always loads diff (for preloading), and also loads task if task tab is active.
 func (p *Plugin) loadSelectedContent() tea.Cmd {
 	var cmds []tea.Cmd
+
+	// If shell is selected, poll shell output immediately
+	if p.shellSelected && p.shellSession != nil && p.previewTab == PreviewTabOutput {
+		cmds = append(cmds, p.pollShellSession())
+	}
+
 	switch p.previewTab {
 	case PreviewTabTask:
 		if cmd := p.loadSelectedDiff(); cmd != nil {

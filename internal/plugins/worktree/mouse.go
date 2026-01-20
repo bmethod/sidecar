@@ -162,17 +162,31 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		// Start drag for pane resizing
 		p.mouseHandler.StartDrag(action.X, action.Y, regionPaneDivider, p.sidebarWidth)
 	case regionWorktreeItem:
-		// Click on worktree - select it
-		if idx, ok := action.Region.Data.(int); ok && idx >= 0 && idx < len(p.worktrees) {
-			if p.selectedIdx != idx {
-				p.selectedIdx = idx
-				p.previewOffset = 0
-				p.previewHorizOffset = 0
-				p.autoScrollOutput = true
+		// Click on worktree or shell entry - select it
+		if idx, ok := action.Region.Data.(int); ok {
+			if idx == -1 {
+				// Shell entry clicked
+				if !p.shellSelected {
+					p.shellSelected = true
+					p.previewOffset = 0
+					p.previewHorizOffset = 0
+					p.autoScrollOutput = true
+				}
+				p.activePane = PaneSidebar
+				return p.loadSelectedContent()
+			} else if idx >= 0 && idx < len(p.worktrees) {
+				// Worktree clicked
+				if p.shellSelected || p.selectedIdx != idx {
+					p.shellSelected = false
+					p.selectedIdx = idx
+					p.previewOffset = 0
+					p.previewHorizOffset = 0
+					p.autoScrollOutput = true
+				}
+				p.ensureVisible()
+				p.activePane = PaneSidebar
+				return p.loadSelectedContent()
 			}
-			p.ensureVisible()
-			p.activePane = PaneSidebar
-			return p.loadSelectedContent()
 		}
 	case regionPreviewTab:
 		// Click on preview tab
@@ -394,15 +408,26 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) tea.Cmd {
 			return p.AttachToSession(wt)
 		}
 	case regionWorktreeItem:
-		// Double-click on worktree - attach to tmux session if agent running
-		if idx, ok := action.Region.Data.(int); ok && idx >= 0 && idx < len(p.worktrees) {
-			p.selectedIdx = idx
-			wt := p.worktrees[idx]
-			if wt.Agent != nil {
-				p.attachedSession = wt.Name
-				return p.AttachToSession(wt)
+		// Double-click on worktree or shell - attach to tmux session if exists
+		if idx, ok := action.Region.Data.(int); ok {
+			if idx == -1 {
+				// Double-click on shell entry - attach if session exists
+				p.shellSelected = true
+				if p.shellSession != nil {
+					return p.attachToShell()
+				}
+				// No session, create one
+				return p.createShellSession()
+			} else if idx >= 0 && idx < len(p.worktrees) {
+				p.shellSelected = false
+				p.selectedIdx = idx
+				wt := p.worktrees[idx]
+				if wt.Agent != nil {
+					p.attachedSession = wt.Name
+					return p.AttachToSession(wt)
+				}
+				p.activePane = PanePreview
 			}
-			p.activePane = PanePreview
 		}
 	case regionKanbanCard:
 		// Double-click on kanban card - attach to tmux session if agent running

@@ -17,6 +17,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	switch msg := msg.(type) {
 	case app.PluginFocusedMsg:
 		if p.focused {
+			// Poll shell or selected agent when plugin gains focus
+			if p.shellSelected && p.shellSession != nil {
+				return p, p.pollShellSession()
+			}
 			return p, p.pollSelectedAgentNowIfVisible()
 		}
 
@@ -263,6 +267,68 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 		}
 		return p, p.scheduleAgentPoll(msg.WorktreeName, interval)
+
+	// Shell session messages
+	case ShellCreatedMsg:
+		if msg.Err != nil {
+			// Creation failed, don't update state
+			return p, nil
+		}
+		// Create shell session agent struct
+		p.shellSession = &Agent{
+			Type:        AgentShell,
+			TmuxSession: msg.SessionName,
+			OutputBuf:   NewOutputBuffer(outputBufferCap),
+			StartedAt:   time.Now(),
+			Status:      AgentStatusRunning,
+		}
+		p.managedSessions[msg.SessionName] = true
+		// Start polling for output
+		cmds = append(cmds, p.scheduleShellPoll(500*time.Millisecond))
+
+	case ShellDetachedMsg:
+		// User detached from shell session - re-enable mouse and resume polling
+		cmds = append(cmds, func() tea.Msg { return tea.EnableMouseAllMotion() })
+		if p.shellSession != nil {
+			cmds = append(cmds, p.scheduleShellPoll(0)) // Immediate poll
+		}
+
+	case shellAttachAfterCreateMsg:
+		// Attach to shell after it was created
+		return p, p.attachToShell()
+
+	case ShellKilledMsg:
+		// Shell session killed, clear state
+		if p.shellSession != nil {
+			delete(p.managedSessions, p.shellSession.TmuxSession)
+		}
+		p.shellSession = nil
+
+	case ShellOutputMsg:
+		// Update last output time if content changed
+		if msg.Changed && p.shellSession != nil {
+			p.shellSession.LastOutput = time.Now()
+		}
+		// Schedule next poll with adaptive interval
+		interval := pollIntervalActive
+		if !msg.Changed {
+			interval = pollIntervalIdle
+		}
+		// Use longer interval if shell output isn't visible
+		if !p.shellSelected || !p.focused || p.previewTab != PreviewTabOutput {
+			background := p.backgroundPollInterval()
+			if background > interval {
+				interval = background
+			}
+		}
+		return p, p.scheduleShellPoll(interval)
+
+	case pollShellMsg:
+		// Poll shell session for output
+		if p.shellSession != nil {
+			return p, p.pollShellSession()
+		}
+		return p, nil
 
 	case AgentStoppedMsg:
 		if wt := p.findWorktree(msg.WorktreeName); wt != nil {

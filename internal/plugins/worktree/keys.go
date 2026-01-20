@@ -273,6 +273,8 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.previewOffset++
 	case "g":
 		if p.activePane == PaneSidebar {
+			// Jump to top = select shell entry
+			p.shellSelected = true
 			p.selectedIdx = 0
 			p.scrollOffset = 0
 			return p.loadSelectedContent()
@@ -282,9 +284,15 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.previewOffset = 10000 // Large offset, will be clamped in render
 	case "G":
 		if p.activePane == PaneSidebar {
-			p.selectedIdx = len(p.worktrees) - 1
-			p.ensureVisible()
-			return p.loadSelectedContent()
+			// Jump to bottom = select last worktree (not shell)
+			if len(p.worktrees) > 0 {
+				p.shellSelected = false
+				p.selectedIdx = len(p.worktrees) - 1
+				p.ensureVisible()
+				return p.loadSelectedContent()
+			}
+			// No worktrees, stay on shell
+			return nil
 		}
 		// Go to bottom (newest content) - resume auto-scroll
 		p.previewOffset = 0
@@ -320,6 +328,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.previewHorizOffset += 10
 		}
 	case "enter":
+		// Shell entry: create or attach to shell session
+		if p.shellSelected {
+			// Always try to attach if session exists, creating tracking state if needed
+			return p.ensureShellAndAttach()
+		}
 		// Attach to tmux session if agent running, otherwise focus preview
 		wt := p.selectedWorktree()
 		if wt != nil && wt.Agent != nil {
@@ -452,6 +465,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		wt := p.selectedWorktree()
 		if wt != nil && wt.Agent != nil {
 			return p.StopAgent(wt)
+		}
+	case "K":
+		// Kill shell session (only when shell is selected)
+		if p.shellSelected && p.shellSession != nil {
+			return p.killShellSession()
 		}
 	case "y":
 		// Approve pending prompt on selected worktree
