@@ -727,12 +727,13 @@ export default function Home() {
             <div>
               <h1 className="sc-title">
                 <span className="sc-titleBrand">Sidecar</span>
-                <span className="sc-titleTagline">Run your AI coding team from one terminal</span>
+                <span className="sc-titleTagline">You might never open your editor again.</span>
               </h1>
 
               <p className="sc-subtitle">
-                Plan features, manage a backlog of work for agents, view diffs, search conversation history,
-                and easily manage git worktrees from a single terminal. You've never coded with AI like this before.
+                AI agents write your code. <a href="https://github.com/marcus/td" className="sc-inlineLink">td</a> lets you plan tasks, review diffs, stage commits,
+                and manage git worktrees without leaving your terminal. The entire development loop
+                happens here while agents write the code.
               </p>
 
               <div style={{ height: 32 }} />
