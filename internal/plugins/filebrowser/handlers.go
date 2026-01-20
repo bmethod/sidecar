@@ -188,6 +188,20 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case "R":
+		// Rename file/directory
+		node := p.tree.GetNode(p.treeCursor)
+		if node != nil && node != p.tree.Root {
+			p.fileOpMode = FileOpRename
+			p.fileOpTarget = node
+			p.fileOpTextInput = textinput.New()
+			p.fileOpTextInput.SetValue(node.Name)
+			p.fileOpTextInput.Focus()
+			p.fileOpTextInput.CursorEnd()
+			p.fileOpError = ""
+			p.fileOpButtonFocus = 0
+		}
+
+	case "ctrl+r":
 		// Reveal in file manager (Finder/Explorer/etc.)
 		node := p.tree.GetNode(p.treeCursor)
 		if node != nil {
@@ -212,18 +226,9 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case "r":
-		// Rename file/directory
-		node := p.tree.GetNode(p.treeCursor)
-		if node != nil && node != p.tree.Root {
-			p.fileOpMode = FileOpRename
-			p.fileOpTarget = node
-			p.fileOpTextInput = textinput.New()
-			p.fileOpTextInput.SetValue(node.Name)
-			p.fileOpTextInput.Focus()
-			p.fileOpTextInput.CursorEnd()
-			p.fileOpError = ""
-			p.fileOpButtonFocus = 0
-		}
+		// Refresh file tree
+		p.lastRefresh = time.Now()
+		return p, p.refresh()
 
 	case "m":
 		// Move file/directory
@@ -453,7 +458,28 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 			p.contentSearchCursor = 0
 		}
 
+	case "r":
+		// Refresh file tree
+		p.lastRefresh = time.Now()
+		return p, p.refresh()
+
 	case "R":
+		// Rename the previewed file
+		if p.previewFile != "" {
+			node := p.tree.FindByPath(p.previewFile)
+			if node != nil && node != p.tree.Root {
+				p.fileOpMode = FileOpRename
+				p.fileOpTarget = node
+				p.fileOpTextInput = textinput.New()
+				p.fileOpTextInput.SetValue(node.Name)
+				p.fileOpTextInput.Focus()
+				p.fileOpTextInput.CursorEnd()
+				p.fileOpError = ""
+				p.fileOpButtonFocus = 0
+			}
+		}
+
+	case "ctrl+r":
 		// Reveal in file manager (Finder/Explorer/etc.)
 		if p.previewFile != "" {
 			return p, p.revealInFileManager(p.previewFile)

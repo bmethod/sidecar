@@ -280,6 +280,16 @@ func (t *FileTree) IndexOf(node *FileNode) int {
 	return -1
 }
 
+// FindByPath returns the node with the given relative path, or nil if not found.
+func (t *FileTree) FindByPath(path string) *FileNode {
+	for _, n := range t.FlatList {
+		if n.Path == path {
+			return n
+		}
+	}
+	return nil
+}
+
 // GetExpandedPaths returns the paths of all expanded directories.
 func (t *FileTree) GetExpandedPaths() map[string]bool {
 	expanded := make(map[string]bool)

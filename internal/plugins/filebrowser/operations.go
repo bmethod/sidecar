@@ -35,7 +35,7 @@ func (p *Plugin) openFileAtLine(path string, lineNo int) tea.Cmd {
 			editor = "vim"
 		}
 		fullPath := filepath.Join(p.ctx.WorkDir, path)
-		return OpenFileMsg{Editor: editor, Path: fullPath, LineNo: lineNo}
+		return plugin.OpenFileMsg{Editor: editor, Path: fullPath, LineNo: lineNo}
 	}
 }
 

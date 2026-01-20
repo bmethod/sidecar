@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/image"
 	"github.com/marcus/sidecar/internal/markdown"
 	"github.com/marcus/sidecar/internal/mouse"
@@ -51,11 +52,6 @@ type (
 	}
 	WatchStartedMsg struct{ Watcher *Watcher }
 	WatchEventMsg   struct{}
-	OpenFileMsg     struct {
-		Editor string
-		Path   string
-		LineNo int // 1-indexed line number (0 = no line)
-	}
 	// NavigateToFileMsg requests navigation to a specific file (from other plugins).
 	NavigateToFileMsg struct {
 		Path string // Relative path from workdir
@@ -209,7 +205,8 @@ type Plugin struct {
 	clipboardIsDir bool   // Whether yanked item is a directory
 
 	// File watcher
-	watcher *Watcher
+	watcher     *Watcher
+	lastRefresh time.Time // Debounce rapid refreshes on focus
 
 	// Mouse support
 	mouseHandler *mouse.Handler
@@ -372,6 +369,14 @@ func (p *Plugin) refresh() tea.Cmd {
 // Update handles messages.
 func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	switch msg := msg.(type) {
+	case app.PluginFocusedMsg:
+		// Refresh tree when plugin gains focus to pick up external file changes
+		if time.Since(p.lastRefresh) < 500*time.Millisecond {
+			return p, nil
+		}
+		p.lastRefresh = time.Now()
+		return p, p.refresh()
+
 	case tea.MouseMsg:
 		return p.handleMouse(msg)
 
@@ -599,6 +604,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "copy-path", Name: "CopyPath", Description: "Copy relative path to clipboard", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 5},
 		{ID: "paste", Name: "Paste", Description: "Paste yanked file", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 5},
 		{ID: "sort", Name: "Sort", Description: "Cycle sort mode", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 6},
+		{ID: "refresh", Name: "Refresh", Description: "Refresh file tree", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 6},
 		{ID: "rename", Name: "Rename", Description: "Rename file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 7},
 		{ID: "move", Name: "Move", Description: "Move file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 7},
 		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 8},
@@ -612,7 +618,9 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "search-content", Name: "Search", Description: "Search file content", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 3},
 		{ID: "toggle-markdown", Name: "Render", Description: "Toggle markdown rendering", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 4},
 		{ID: "back", Name: "Back", Description: "Return to file tree", Category: plugin.CategoryNavigation, Context: "file-browser-preview", Priority: 5},
-		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 6},
+		{ID: "refresh", Name: "Refresh", Description: "Refresh file tree", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 5},
+		{ID: "rename", Name: "Rename", Description: "Rename file", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 6},
+		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 7},
 		{ID: "yank-contents", Name: "Yank", Description: "Copy file contents", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 7},
 		{ID: "yank-path", Name: "Path", Description: "Copy file path", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 8},
 		{ID: "toggle-sidebar", Name: "Panel", Description: "Toggle tree pane visibility", Category: plugin.CategoryView, Context: "file-browser-preview", Priority: 9},

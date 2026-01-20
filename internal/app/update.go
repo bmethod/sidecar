@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/palette"
-	"github.com/marcus/sidecar/internal/plugins/filebrowser"
+	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/version"
 )
@@ -192,7 +192,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Switch to requested plugin
 		return m, m.FocusPluginByID(msg.PluginID)
 
-	case filebrowser.OpenFileMsg:
+	case plugin.OpenFileMsg:
 		// Open file in editor using tea.ExecProcess
 		// Most editors support +lineNo syntax for opening at a line
 		args := []string{}

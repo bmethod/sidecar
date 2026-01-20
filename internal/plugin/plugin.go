@@ -53,3 +53,15 @@ type Diagnostic struct {
 	Status string
 	Detail string
 }
+
+// OpenFileMsg requests opening a file in an external editor.
+// Sent by plugins, handled by app to exec the editor process.
+type OpenFileMsg struct {
+	Editor string // Editor command (e.g., "vim", "code")
+	Path   string // File path to open
+	LineNo int    // Line number to open at (0 = start of file)
+}
+
+// PluginFocusedMsg is sent to a plugin when it becomes the active plugin.
+// Plugins can use this to refresh data or update their state on focus.
+type PluginFocusedMsg struct{}

@@ -793,7 +793,7 @@ func (p *Plugin) openFile(path string) tea.Cmd {
 			editor = "vim"
 		}
 		fullPath := filepath.Join(p.ctx.WorkDir, path)
-		return OpenFileMsg{Editor: editor, Path: fullPath}
+		return plugin.OpenFileMsg{Editor: editor, Path: fullPath}
 	}
 }
 
@@ -866,10 +866,6 @@ type ErrorMsg struct{ Err error }
 type DiffLoadedMsg struct {
 	Content string // Rendered content (may be from delta)
 	Raw     string // Raw diff for built-in rendering
-}
-type OpenFileMsg struct {
-	Editor string
-	Path   string
 }
 type CommitSuccessMsg struct {
 	Hash    string

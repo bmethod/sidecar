@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 // Message types for tea.Cmd
@@ -73,12 +74,13 @@ type TaggedTickMsg struct {
 
 // PluginFocusedMsg is sent to a plugin when it becomes the active plugin.
 // Plugins can use this to refresh data or update their state on focus.
-type PluginFocusedMsg struct{}
+// Re-exported from plugin package for backward compatibility.
+type PluginFocusedMsg = plugin.PluginFocusedMsg
 
 // PluginFocused returns a command that sends PluginFocusedMsg.
 func PluginFocused() tea.Cmd {
 	return func() tea.Msg {
-		return PluginFocusedMsg{}
+		return plugin.PluginFocusedMsg{}
 	}
 }
 
