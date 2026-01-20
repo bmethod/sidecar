@@ -213,8 +213,20 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 
 	// === Render shells section ===
 	if len(p.shells) > 0 {
-		// Shells subheader
-		lines = append(lines, styles.Muted.Render("Shells"))
+		// Shells subheader with [+] button
+		shellsTitle := styles.Muted.Render("Shells")
+		shellsTitleWidth := lipgloss.Width(shellsTitle)
+		shellsPlusStyle := styles.Button
+		if p.hoverShellsPlusButton {
+			shellsPlusStyle = styles.ButtonHover
+		}
+		shellsPlusBtn := shellsPlusStyle.Render("+")
+		shellsPlusBtnWidth := lipgloss.Width(shellsPlusBtn)
+		shellsHeader := shellsTitle + " " + shellsPlusBtn
+		lines = append(lines, shellsHeader)
+		// Register hit region for shells [+] button (after title + space)
+		shellsPlusBtnX := 2 + shellsTitleWidth + 1 // 2 for left border+padding, +1 for space
+		p.mouseHandler.HitMap.AddRect(regionShellsPlusButton, shellsPlusBtnX, currentY, shellsPlusBtnWidth, 1, nil)
 		currentY++
 
 		// Render each shell entry
@@ -274,9 +286,21 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 		}
 		// When shell is selected and no worktrees, just show the shell entries (already rendered above)
 	} else {
-		// Worktrees subheader (only if we have shells above)
+		// Worktrees subheader with [+] button (only if we have shells above)
 		if len(p.shells) > 0 {
-			lines = append(lines, styles.Muted.Render("Worktrees"))
+			worktreesTitle := styles.Muted.Render("Worktrees")
+			worktreesTitleWidth := lipgloss.Width(worktreesTitle)
+			worktreesPlusStyle := styles.Button
+			if p.hoverWorktreesPlusButton {
+				worktreesPlusStyle = styles.ButtonHover
+			}
+			worktreesPlusBtn := worktreesPlusStyle.Render("+")
+			worktreesPlusBtnWidth := lipgloss.Width(worktreesPlusBtn)
+			worktreesHeader := worktreesTitle + " " + worktreesPlusBtn
+			lines = append(lines, worktreesHeader)
+			// Register hit region for worktrees [+] button (after title + space)
+			worktreesPlusBtnX := 2 + worktreesTitleWidth + 1 // 2 for left border+padding, +1 for space
+			p.mouseHandler.HitMap.AddRect(regionWorktreesPlusButton, worktreesPlusBtnX, currentY, worktreesPlusBtnWidth, 1, nil)
 			currentY++
 		}
 

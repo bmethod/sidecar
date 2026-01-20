@@ -161,10 +161,18 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 		p.mergeConfirmCheckboxHover = 0
 		p.mergeConfirmButtonHover = 0
 		// Handle sidebar header button hover
-		if action.Region != nil && action.Region.ID == regionCreateWorktreeButton {
-			p.hoverNewButton = true
-		} else {
-			p.hoverNewButton = false
+		p.hoverNewButton = false
+		p.hoverShellsPlusButton = false
+		p.hoverWorktreesPlusButton = false
+		if action.Region != nil {
+			switch action.Region.ID {
+			case regionCreateWorktreeButton:
+				p.hoverNewButton = true
+			case regionShellsPlusButton:
+				p.hoverShellsPlusButton = true
+			case regionWorktreesPlusButton:
+				p.hoverWorktreesPlusButton = true
+			}
 		}
 	}
 	return nil
@@ -178,7 +186,13 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 
 	switch action.Region.ID {
 	case regionCreateWorktreeButton:
-		// Click on [New] button - open create worktree modal
+		// Click on [New] button - open type selector modal
+		return p.openCreateModal()
+	case regionShellsPlusButton:
+		// Click on Shells [+] button - immediately create a new shell
+		return p.createNewShell()
+	case regionWorktreesPlusButton:
+		// Click on Worktrees [+] button - open new worktree modal directly
 		return p.openCreateModal()
 	case regionSidebar:
 		p.activePane = PaneSidebar

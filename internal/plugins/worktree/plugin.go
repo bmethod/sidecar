@@ -71,7 +71,9 @@ const (
 	regionPromptFilter = "prompt-filter"
 
 	// Sidebar header regions
-	regionCreateWorktreeButton = "create-worktree-button"
+	regionCreateWorktreeButton   = "create-worktree-button"
+	regionShellsPlusButton       = "shells-plus-button"
+	regionWorktreesPlusButton    = "worktrees-plus-button"
 
 	// Type selector modal regions
 	regionTypeSelectorOption = "type-selector-option"
@@ -220,7 +222,9 @@ type Plugin struct {
 	initialReconnectDone bool
 
 	// Sidebar header hover state
-	hoverNewButton bool
+	hoverNewButton            bool
+	hoverShellsPlusButton     bool
+	hoverWorktreesPlusButton  bool
 
 	// Multiple shell sessions (not tied to git worktrees)
 	shells           []*ShellSession // All shell sessions for this project
