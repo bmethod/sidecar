@@ -2,6 +2,15 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.32.0] - 2026-01-20
+
+### Features
+- **Worktree**: Improved shell UX and navigation
+
+### Bug Fixes
+- **Worktree**: Auto-focus newly created worktree in list and preview
+- **Worktree**: Handle waitForSession failure in ensureShellAndAttach
+
 ## [v0.31.0] - 2026-01-20
 
 ### Features
