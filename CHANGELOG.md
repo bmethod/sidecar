@@ -2,6 +2,11 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.35.0] - 2026-01-21
+
+### Improvements
+- **File Browser**: Refactored scroll-to-line logic into reusable helper
+
 ## [v0.34.0] - 2026-01-20
 
 ### Features
