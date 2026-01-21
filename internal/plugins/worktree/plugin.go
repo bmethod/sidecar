@@ -276,6 +276,7 @@ func New() *Plugin {
 		taskMarkdownMode:    true,  // Default to rendered mode
 		shellSelected:       false, // Start with first worktree selected, not shell
 		typeSelectorIdx:     1,     // Default to Worktree option
+		taskLoading:         false, // Explicitly initialized (td-3668584f)
 	}
 }
 
@@ -770,6 +771,7 @@ func (p *Plugin) moveCursor(delta int) {
 		p.previewOffset = 0
 		p.previewHorizOffset = 0
 		p.autoScrollOutput = true
+		p.taskLoading = false // Reset task loading state for new selection (td-3668584f)
 		// Persist selection to disk
 		p.saveSelectionState()
 	}
@@ -863,9 +865,15 @@ func (p *Plugin) loadSelectedContent() tea.Cmd {
 }
 
 // loadTaskDetailsIfNeeded loads task details if not cached or stale.
+// Guards against multiple simultaneous fetches (td-3668584f).
 func (p *Plugin) loadTaskDetailsIfNeeded() tea.Cmd {
 	wt := p.selectedWorktree()
 	if wt == nil || wt.TaskID == "" {
+		return nil
+	}
+
+	// Don't start a new fetch if already loading (td-3668584f)
+	if p.taskLoading {
 		return nil
 	}
 
