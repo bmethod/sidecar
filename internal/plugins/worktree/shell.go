@@ -55,6 +55,7 @@ type (
 	ShellCreatedMsg struct {
 		SessionName string // tmux session name
 		DisplayName string // Display name (e.g., "Shell 1")
+		PaneID      string // tmux pane ID (e.g., "%12") for interactive mode
 		Err         error  // Non-nil if creation failed
 	}
 
@@ -168,12 +169,16 @@ func (p *Plugin) discoverExistingShells() []*ShellSession {
 			displayName = fmt.Sprintf("Shell %d", idx)
 		}
 
+		// Capture pane ID for interactive mode support
+		paneID := getPaneID(line)
+
 		shell := &ShellSession{
 			Name:     displayName,
 			TmuxName: line,
 			Agent: &Agent{
 				Type:        AgentShell,
 				TmuxSession: line,
+				TmuxPane:    paneID,
 				OutputBuf:   NewOutputBuffer(outputBufferCap),
 				StartedAt:   time.Now(), // Approximate
 				Status:      AgentStatusRunning,
@@ -231,7 +236,8 @@ func (p *Plugin) createNewShell() tea.Cmd {
 	return func() tea.Msg {
 		// Check if session already exists (shouldn't happen with unique names)
 		if sessionExists(sessionName) {
-			return ShellCreatedMsg{SessionName: sessionName, DisplayName: displayName}
+			paneID := getPaneID(sessionName)
+			return ShellCreatedMsg{SessionName: sessionName, DisplayName: displayName, PaneID: paneID}
 		}
 
 		// Create new detached session in project directory
@@ -250,7 +256,10 @@ func (p *Plugin) createNewShell() tea.Cmd {
 			}
 		}
 
-		return ShellCreatedMsg{SessionName: sessionName, DisplayName: displayName}
+		// Capture pane ID for interactive mode support
+		paneID := getPaneID(sessionName)
+
+		return ShellCreatedMsg{SessionName: sessionName, DisplayName: displayName, PaneID: paneID}
 	}
 }
 
@@ -300,7 +309,9 @@ func (p *Plugin) ensureShellAndAttachByIndex(idx int) tea.Cmd {
 					Err:         fmt.Errorf("recreate shell session: %w", err),
 				}
 			}
-			return ShellCreatedMsg{SessionName: sessionName, DisplayName: shell.Name}
+			// Capture pane ID for interactive mode support
+			paneID := getPaneID(sessionName)
+			return ShellCreatedMsg{SessionName: sessionName, DisplayName: shell.Name, PaneID: paneID}
 		},
 		func() tea.Msg {
 			if !waitForSession(sessionName) {

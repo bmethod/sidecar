@@ -247,6 +247,9 @@ type Plugin struct {
 	// State restoration tracking (only restore once on startup)
 	stateRestored bool
 
+	// Interactive mode state (feature-gated behind tmux_interactive_input)
+	interactiveState *InteractiveState
+
 	// Sidebar header hover state
 	hoverNewButton           bool
 	hoverShellsPlusButton    bool

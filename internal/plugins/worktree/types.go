@@ -24,6 +24,7 @@ const (
 	ViewModeTypeSelector                   // Type selector modal (shell vs worktree)
 	ViewModeRenameShell                    // Rename shell modal
 	ViewModeFilePicker                     // Diff file picker modal
+	ViewModeInteractive                    // Interactive mode (tmux input passthrough)
 )
 
 // FocusPane represents which pane is active in the split view.
@@ -201,13 +202,40 @@ type ShellSession struct {
 type Agent struct {
 	Type        AgentType // claude, codex, aider, gemini
 	TmuxSession string    // tmux session name
-	TmuxPane    string    // Pane identifier
+	TmuxPane    string    // Pane identifier (e.g., "%12" - globally unique)
 	PID         int       // Process ID (if available)
 	StartedAt   time.Time
 	LastOutput  time.Time     // Last time output was detected
 	OutputBuf   *OutputBuffer // Last N lines of output
 	Status      AgentStatus
 	WaitingFor  string // Prompt text if waiting
+}
+
+// InteractiveState tracks state for interactive mode (tmux input passthrough).
+// Feature-gated behind tmux_interactive_input feature flag.
+type InteractiveState struct {
+	// Active indicates whether interactive mode is currently active.
+	Active bool
+
+	// TargetPane is the tmux pane ID (e.g., "%12") receiving input.
+	TargetPane string
+
+	// TargetSession is the tmux session name for the active pane.
+	TargetSession string
+
+	// LastKeyTime tracks when the last key was sent for polling decay.
+	LastKeyTime time.Time
+
+	// EscapePressed tracks if a single Escape was recently pressed
+	// (for double-escape exit detection with 150ms delay).
+	EscapePressed bool
+
+	// EscapeTime is when the first Escape was pressed.
+	EscapeTime time.Time
+
+	// CursorRow and CursorCol track the cursor position for overlay rendering.
+	CursorRow int
+	CursorCol int
 }
 
 // AgentStatus represents the current status of an agent.

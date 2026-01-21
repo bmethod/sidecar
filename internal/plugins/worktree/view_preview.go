@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcus/sidecar/internal/features"
 	"github.com/marcus/sidecar/internal/styles"
 )
 
@@ -197,8 +198,22 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 		return dimText("No agent running\nPress 's' to start an agent")
 	}
 
-	// Hint for tmux detach
-	hint := dimText("enter to attach • Ctrl-b d to detach")
+	// Hint depends on mode - interactive mode shows exit hints
+	var hint string
+	if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active {
+		// Interactive mode - show exit hint with highlight
+		interactiveStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(styles.GetCurrentTheme().Colors.Warning)).
+			Bold(true)
+		hint = interactiveStyle.Render("INTERACTIVE") + " " + dimText("Ctrl+\\ to exit • typing goes to tmux")
+	} else {
+		// Only show "i for interactive" hint if feature flag is enabled
+		if features.IsEnabled(features.TmuxInteractiveInput.Name) {
+			hint = dimText("enter to attach • i for interactive • Ctrl-b d to detach")
+		} else {
+			hint = dimText("enter to attach • Ctrl-b d to detach")
+		}
+	}
 	height-- // Reserve line for hint
 
 	if wt.Agent.OutputBuf == nil {
@@ -290,8 +305,22 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 		return p.renderShellPrimer(width, height)
 	}
 
-	// Hint for tmux detach
-	hint := dimText("enter to attach • Ctrl-b d to detach")
+	// Hint depends on mode - interactive mode shows exit hints
+	var hint string
+	if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active {
+		// Interactive mode - show exit hint with highlight
+		interactiveStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(styles.GetCurrentTheme().Colors.Warning)).
+			Bold(true)
+		hint = interactiveStyle.Render("INTERACTIVE") + " " + dimText("Ctrl+\\ to exit • typing goes to tmux")
+	} else {
+		// Only show "i for interactive" hint if feature flag is enabled
+		if features.IsEnabled(features.TmuxInteractiveInput.Name) {
+			hint = dimText("enter to attach • i for interactive • Ctrl-b d to detach")
+		} else {
+			hint = dimText("enter to attach • Ctrl-b d to detach")
+		}
+	}
 	height-- // Reserve line for hint
 
 	if shell.Agent.OutputBuf == nil {

@@ -156,6 +156,7 @@ const (
 type AgentStartedMsg struct {
 	WorktreeName string
 	SessionName  string
+	PaneID       string // tmux pane ID (e.g., "%12") for interactive mode
 	AgentType    AgentType
 	Reconnected  bool // True if we reconnected to an existing session
 	Err          error
@@ -200,9 +201,11 @@ func (p *Plugin) StartAgent(wt *Worktree, agentType AgentType) tea.Cmd {
 		checkCmd := exec.Command("tmux", "has-session", "-t", sessionName)
 		if checkCmd.Run() == nil {
 			// Session exists - reconnect to it instead of failing
+			paneID := getPaneID(sessionName)
 			return AgentStartedMsg{
 				WorktreeName: wt.Name,
 				SessionName:  sessionName,
+				PaneID:       paneID,
 				AgentType:    agentType,
 				Reconnected:  true, // Flag that we reconnected to existing session
 			}
@@ -255,9 +258,13 @@ func (p *Plugin) StartAgent(wt *Worktree, agentType AgentType) tea.Cmd {
 			return AgentStartedMsg{Err: fmt.Errorf("start agent: %w", err)}
 		}
 
+		// Capture pane ID for interactive mode support
+		paneID := getPaneID(sessionName)
+
 		return AgentStartedMsg{
 			WorktreeName: wt.Name,
 			SessionName:  sessionName,
+			PaneID:       paneID,
 			AgentType:    agentType,
 		}
 	}
@@ -389,9 +396,11 @@ func (p *Plugin) StartAgentWithOptions(wt *Worktree, agentType AgentType, skipPe
 		checkCmd := exec.Command("tmux", "has-session", "-t", sessionName)
 		if checkCmd.Run() == nil {
 			// Session exists - reconnect to it instead of failing
+			paneID := getPaneID(sessionName)
 			return AgentStartedMsg{
 				WorktreeName: wt.Name,
 				SessionName:  sessionName,
+				PaneID:       paneID,
 				AgentType:    agentType,
 				Reconnected:  true,
 			}
@@ -444,9 +453,13 @@ func (p *Plugin) StartAgentWithOptions(wt *Worktree, agentType AgentType, skipPe
 			return AgentStartedMsg{Err: fmt.Errorf("start agent: %w", err)}
 		}
 
+		// Capture pane ID for interactive mode support
+		paneID := getPaneID(sessionName)
+
 		return AgentStartedMsg{
 			WorktreeName: wt.Name,
 			SessionName:  sessionName,
+			PaneID:       paneID,
 			AgentType:    agentType,
 		}
 	}
@@ -523,6 +536,22 @@ func sanitizeName(name string) string {
 	name = strings.ReplaceAll(name, ":", "-")
 	name = strings.ReplaceAll(name, "/", "-")
 	return name
+}
+
+// getPaneID retrieves the tmux pane ID for a session.
+// Returns pane IDs like "%12" which are globally unique and stable.
+func getPaneID(sessionName string) string {
+	cmd := exec.Command("tmux", "list-panes", "-t", sessionName, "-F", "#{pane_id}")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// Return first pane ID (sessions typically have one pane)
+	paneID := strings.TrimSpace(string(output))
+	if idx := strings.Index(paneID, "\n"); idx > 0 {
+		paneID = paneID[:idx]
+	}
+	return paneID
 }
 
 // staggerOffset returns a consistent stagger offset for a worktree name.
@@ -1043,9 +1072,11 @@ func (p *Plugin) reconnectAgents() tea.Cmd {
 			}
 
 			// Create agent record
+			paneID := getPaneID(session)
 			agent := &Agent{
 				Type:        AgentClaude, // Default, will be detected from output
 				TmuxSession: session,
+				TmuxPane:    paneID, // Capture pane ID for interactive mode
 				StartedAt:   time.Now(), // Unknown actual start
 				OutputBuf:   NewOutputBuffer(outputBufferCap),
 			}

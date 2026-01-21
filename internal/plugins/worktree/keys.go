@@ -38,6 +38,8 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleRenameShellKeys(msg)
 	case ViewModeFilePicker:
 		return p.handleFilePickerKeys(msg)
+	case ViewModeInteractive:
+		return p.handleInteractiveKeys(msg)
 	}
 	return nil
 }
@@ -528,6 +530,12 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "r":
 		return func() tea.Msg { return RefreshMsg{} }
+	case "i":
+		// Enter interactive mode (tmux input passthrough) - feature gated
+		// Only available in preview pane with output tab when there's an active session
+		if p.activePane == PanePreview && p.previewTab == PreviewTabOutput {
+			return p.enterInteractiveMode()
+		}
 	case "v":
 		// In sidebar: toggle between list and kanban view
 		// In preview pane on diff tab: toggle unified/side-by-side diff view

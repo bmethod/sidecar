@@ -232,6 +232,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			agent := &Agent{
 				Type:        msg.AgentType,
 				TmuxSession: msg.SessionName,
+				TmuxPane:    msg.PaneID, // Store pane ID for interactive mode
 				StartedAt:   time.Now(),
 				OutputBuf:   NewOutputBuffer(outputBufferCap),
 			}
@@ -310,6 +311,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			Agent: &Agent{
 				Type:        AgentShell,
 				TmuxSession: msg.SessionName,
+				TmuxPane:    msg.PaneID, // Store pane ID for interactive mode
 				OutputBuf:   NewOutputBuffer(outputBufferCap),
 				StartedAt:   time.Now(),
 				Status:      AgentStatusRunning,
@@ -771,6 +773,15 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case OpenCreateModalWithTaskMsg:
 		return p, p.openCreateModalWithTask(msg.TaskID, msg.TaskTitle)
+
+	case escapeTimerMsg:
+		// Handle escape delay timer for interactive mode double-escape detection
+		if p.viewMode == ViewModeInteractive {
+			cmd := p.handleEscapeTimer()
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 
 	case tea.KeyMsg:
 		cmd := p.handleKeyPress(msg)
