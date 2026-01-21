@@ -276,6 +276,16 @@ func GetFlashGradient() Gradient {
 	return NewGradient(colors, DefaultGradientAngle)
 }
 
+// GetInteractiveGradient returns a gradient for interactive mode borders (td-70aed9).
+// Uses warning/success colors to indicate the pane is receiving keyboard input.
+func GetInteractiveGradient() Gradient {
+	theme := GetCurrentTheme()
+	// Use warning (amber) and success (green) for interactive state
+	// This creates an energetic gradient indicating active input mode
+	colors := []string{theme.Colors.Warning, theme.Colors.Success}
+	return NewGradient(colors, DefaultGradientAngle)
+}
+
 // RenderPanel renders content in a panel with gradient borders.
 // This is the main function plugins should use for bordered panels.
 // active determines whether to use active (focused) or normal gradient.

@@ -169,7 +169,10 @@ func (p *Plugin) renderListView(width, height int) string {
 	leftPane := styles.RenderPanel(sidebarContent, sidebarW, paneHeight, sidebarActive)
 
 	var rightPane string
-	if flashActive && previewActive {
+	if p.viewMode == ViewModeInteractive {
+		// Use interactive gradient when in interactive mode (td-70aed9)
+		rightPane = styles.RenderPanelWithGradient(previewContent, previewW, paneHeight, styles.GetInteractiveGradient())
+	} else if flashActive && previewActive {
 		rightPane = styles.RenderPanelWithGradient(previewContent, previewW, paneHeight, styles.GetFlashGradient())
 	} else {
 		rightPane = styles.RenderPanel(previewContent, previewW, paneHeight, previewActive)

@@ -332,9 +332,13 @@ func (p *Plugin) enterInteractiveMode() tea.Cmd {
 
 	// Resize tmux pane to match preview width (td-c7dd1e)
 	// This ensures terminal content fits the visible area without being cut off
-	if paneID != "" {
+	target := paneID
+	if target == "" {
+		target = sessionName // Fall back to session name if pane ID not available
+	}
+	if target != "" {
 		previewWidth, previewHeight := p.calculatePreviewDimensions()
-		p.resizeTmuxPane(paneID, previewWidth, previewHeight)
+		p.resizeTmuxPane(target, previewWidth, previewHeight)
 	}
 
 	// Initialize interactive state
