@@ -187,6 +187,7 @@ type Plugin struct {
 	cachedTaskID      string
 	cachedTask        *TaskDetails
 	cachedTaskFetched time.Time
+	taskLoading       bool // True when task fetch is in progress
 
 	// Markdown rendering for task view
 	markdownRenderer     *markdown.Renderer
@@ -830,7 +831,7 @@ func (p *Plugin) cyclePreviewTab(delta int) tea.Cmd {
 }
 
 // loadSelectedContent loads content based on the active preview tab.
-// Always loads diff (for preloading), and also loads task if task tab is active.
+// Always loads diff (for preloading), and pre-fetches task details for worktrees with linked tasks.
 func (p *Plugin) loadSelectedContent() tea.Cmd {
 	var cmds []tea.Cmd
 
@@ -839,19 +840,16 @@ func (p *Plugin) loadSelectedContent() tea.Cmd {
 		cmds = append(cmds, p.pollShellSessionByName(shell.TmuxName))
 	}
 
-	switch p.previewTab {
-	case PreviewTabTask:
-		if cmd := p.loadSelectedDiff(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		if cmd := p.loadTaskDetailsIfNeeded(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	default:
-		if cmd := p.loadSelectedDiff(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+	// Always load diff
+	if cmd := p.loadSelectedDiff(); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
+
+	// Always pre-fetch task details if worktree has a linked task (eliminates lag when switching to task tab)
+	if cmd := p.loadTaskDetailsIfNeeded(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+
 	if cmd := p.pollSelectedAgentNowIfVisible(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -873,6 +871,7 @@ func (p *Plugin) loadTaskDetailsIfNeeded() tea.Cmd {
 
 	// Check if we need to refresh (different task or cache is older than 30 seconds)
 	if p.cachedTaskID != wt.TaskID || time.Since(p.cachedTaskFetched) > 30*time.Second {
+		p.taskLoading = true
 		return p.loadTaskDetails(wt.TaskID)
 	}
 	return nil

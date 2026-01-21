@@ -543,6 +543,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case TaskDetailsLoadedMsg:
+		p.taskLoading = false
 		if msg.Err == nil && msg.Details != nil {
 			p.cachedTaskID = msg.TaskID
 			p.cachedTask = msg.Details

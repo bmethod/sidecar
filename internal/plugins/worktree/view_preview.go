@@ -423,8 +423,8 @@ func (p *Plugin) renderTaskContent(width, height int) string {
 		return dimText("No linked task\nPress 't' to link a task")
 	}
 
-	// Check if we have cached details for this task
-	if p.cachedTask == nil || p.cachedTaskID != wt.TaskID {
+	// Check if we're loading or don't have cached details for this task
+	if p.taskLoading || p.cachedTask == nil || p.cachedTaskID != wt.TaskID {
 		return dimText(fmt.Sprintf("Loading task %s...", wt.TaskID))
 	}
 
