@@ -118,11 +118,9 @@ func NewWatcher(chatsDir string) (<-chan adapter.Event, error) {
 	return events, nil
 }
 
-// extractSessionID reads only the first 1024 bytes of the session file
-// and extracts the sessionId field using regex. This avoids reading
-// the entire file during watch events. We use 1024 bytes instead of 512
-// to ensure we capture the complete sessionId even if it appears near
-// the boundary (td-f9ce6102).
+// extractSessionID reads the session file and extracts the sessionId field.
+// First attempts with a 2048-byte buffer, falling back to full file read
+// if the buffer was full but no match was found (td-8d9c18c2).
 func extractSessionID(path string) string {
 	file, err := os.Open(path)
 	if err != nil {
@@ -130,8 +128,9 @@ func extractSessionID(path string) string {
 	}
 	defer file.Close()
 
-	// Read first 1024 bytes - sessionId is always near the start
-	buf := make([]byte, 1024)
+	// Try reading first 2048 bytes - sessionId is usually near the start
+	const bufSize = 2048
+	buf := make([]byte, bufSize)
 	n, err := file.Read(buf)
 	if err != nil || n == 0 {
 		return ""
@@ -139,7 +138,30 @@ func extractSessionID(path string) string {
 
 	// Extract sessionId using regex
 	if match := sessionIDPattern.FindSubmatch(buf[:n]); match != nil {
-		return string(match[1])
+		return validateSessionID(string(match[1]))
 	}
+
+	// Fallback: if buffer was full, sessionId might be beyond buffer boundary
+	if n == bufSize {
+		// Read entire file as fallback
+		file.Seek(0, 0)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return ""
+		}
+		if match := sessionIDPattern.FindSubmatch(data); match != nil {
+			return validateSessionID(string(match[1]))
+		}
+	}
+
 	return ""
+}
+
+// validateSessionID checks that sessionId looks valid (non-empty, reasonable length).
+func validateSessionID(id string) string {
+	// SessionIDs should be non-empty and reasonably sized (typically UUIDs or similar)
+	if len(id) == 0 || len(id) > 128 {
+		return ""
+	}
+	return id
 }

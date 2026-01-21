@@ -63,8 +63,12 @@ func NewWatcher(root string) (<-chan adapter.Event, error) {
 
 				if event.Op&fsnotify.Create != 0 {
 					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+						// Scan-watch-scan pattern to avoid race condition (td-459b822a):
+						// 1. First scan: capture files that exist now
+						// 2. Add watch: register for future events
+						// 3. Second scan: capture files created during steps 1-2
+						scanNewDirForSessions(event.Name, events)
 						_ = addWatchTree(watcher, event.Name)
-						// Scan for JSONL files that may exist before watch was added (td-ba9f8c12)
 						scanNewDirForSessions(event.Name, events)
 						continue
 					}
