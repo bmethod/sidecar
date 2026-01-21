@@ -396,6 +396,9 @@ func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, col
 	if totalTabs == 0 {
 		totalTabs = 1
 	}
+	if tabIndex < 0 {
+		tabIndex = 0
+	}
 
 	// Calculate position in the gradient (0.0 to 1.0 across all tabs)
 	tabWidth := 1.0 / float64(totalTabs)
@@ -439,6 +442,11 @@ func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, col
 func renderPerTabColor(label string, tabIndex int, isActive bool, colors []RGB) string {
 	if len(colors) == 0 {
 		return renderSolidTab(label, isActive)
+	}
+
+	// Guard against negative tabIndex (Go modulo returns negative for negative input)
+	if tabIndex < 0 {
+		tabIndex = 0
 	}
 
 	// Get color for this tab (cycle through available colors)
