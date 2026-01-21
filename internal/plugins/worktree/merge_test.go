@@ -314,7 +314,7 @@ func TestParseExistingPRURL(t *testing.T) {
 	}
 }
 
-func TestSummarizePullError(t *testing.T) {
+func TestSummarizeGitError(t *testing.T) {
 	tests := []struct {
 		name         string
 		errMsg       string
@@ -344,6 +344,24 @@ func TestSummarizePullError(t *testing.T) {
 			errMsg:       "pull: hint: Diverging branches have diverged and must be merged",
 			wantSummary:  "Local and remote branches have diverged",
 			wantDiverged: true,
+		},
+		{
+			name:         "rebase conflict",
+			errMsg:       "rebase failed: CONFLICT (content): Merge conflict in file.go",
+			wantSummary:  "Conflicts detected - resolve manually",
+			wantDiverged: false,
+		},
+		{
+			name:         "merge conflict",
+			errMsg:       "merge failed: Automatic merge failed; fix conflicts and then commit",
+			wantSummary:  "Conflicts detected - resolve manually",
+			wantDiverged: false,
+		},
+		{
+			name:         "unmerged files",
+			errMsg:       "error: you have unmerged files in the working tree",
+			wantSummary:  "Unmerged files - resolve conflicts manually",
+			wantDiverged: false,
 		},
 		{
 			name:         "local changes blocking",
@@ -390,17 +408,17 @@ func TestSummarizePullError(t *testing.T) {
 				err = fmt.Errorf("%s", tt.errMsg)
 			}
 
-			gotSummary, gotFull, gotDiverged := summarizePullError(err)
+			gotSummary, gotFull, gotDiverged := summarizeGitError(err)
 
 			if gotSummary != tt.wantSummary {
-				t.Errorf("summarizePullError() summary = %q, want %q", gotSummary, tt.wantSummary)
+				t.Errorf("summarizeGitError() summary = %q, want %q", gotSummary, tt.wantSummary)
 			}
 			if gotDiverged != tt.wantDiverged {
-				t.Errorf("summarizePullError() diverged = %v, want %v", gotDiverged, tt.wantDiverged)
+				t.Errorf("summarizeGitError() diverged = %v, want %v", gotDiverged, tt.wantDiverged)
 			}
 			// Full error should preserve original message
 			if err != nil && gotFull != tt.errMsg {
-				t.Errorf("summarizePullError() full = %q, want %q", gotFull, tt.errMsg)
+				t.Errorf("summarizeGitError() full = %q, want %q", gotFull, tt.errMsg)
 			}
 		})
 	}

@@ -1533,10 +1533,11 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 						sb.WriteString(dimText("  Details:"))
 						sb.WriteString("\n")
 						// Wrap long lines and indent (cap at 10 lines)
-						detailLines := strings.Split(results.PullErrorFull, "\n")
+						allDetailLines := strings.Split(results.PullErrorFull, "\n")
 						maxDetailLines := 10
-						if len(detailLines) > maxDetailLines {
-							detailLines = detailLines[:maxDetailLines]
+						detailLines := allDetailLines
+						if len(allDetailLines) > maxDetailLines {
+							detailLines = allDetailLines[:maxDetailLines]
 						}
 						for _, line := range detailLines {
 							if line = strings.TrimSpace(line); line != "" {
@@ -1544,9 +1545,9 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 								sb.WriteString("\n")
 							}
 						}
-						if len(strings.Split(results.PullErrorFull, "\n")) > maxDetailLines {
+						if len(allDetailLines) > maxDetailLines {
 							sb.WriteString(dimText(fmt.Sprintf("    ... (%d more lines)",
-								len(strings.Split(results.PullErrorFull, "\n"))-maxDetailLines)))
+								len(allDetailLines)-maxDetailLines)))
 							sb.WriteString("\n")
 						}
 						sb.WriteString("\n")

@@ -554,9 +554,9 @@ func (p *Plugin) pullAfterMerge(wt *Worktree, branch string, currentBranch strin
 	}
 }
 
-// summarizePullError parses git pull/fetch output and returns a concise summary.
+// summarizeGitError parses git pull/rebase/merge output and returns a concise summary.
 // Returns: (summary string, fullError string, isDiverged bool)
-func summarizePullError(err error) (string, string, bool) {
+func summarizeGitError(err error) (string, string, bool) {
 	if err == nil {
 		return "", "", false
 	}
@@ -584,12 +584,23 @@ func summarizePullError(err error) (string, string, bool) {
 	// Generate concise summary based on error type
 	var summary string
 	switch {
+	// Divergence errors
 	case strings.Contains(lowerMsg, "not possible to fast-forward"):
 		summary = "Local and remote branches have diverged"
 	case strings.Contains(lowerMsg, "cannot fast-forward"):
 		summary = "Local and remote branches have diverged"
 	case strings.Contains(lowerMsg, "have diverged"):
 		summary = "Local and remote branches have diverged"
+	// Conflict errors (rebase/merge)
+	case strings.Contains(lowerMsg, "conflict"):
+		summary = "Conflicts detected - resolve manually"
+	case strings.Contains(lowerMsg, "rebase failed"):
+		summary = "Rebase failed - resolve conflicts manually"
+	case strings.Contains(lowerMsg, "merge failed"):
+		summary = "Merge failed - resolve conflicts manually"
+	case strings.Contains(lowerMsg, "unmerged files"):
+		summary = "Unmerged files - resolve conflicts manually"
+	// Other common errors
 	case strings.Contains(lowerMsg, "your local changes"):
 		summary = "Uncommitted local changes blocking pull"
 	case strings.Contains(lowerMsg, "could not resolve host"):
@@ -599,18 +610,19 @@ func summarizePullError(err error) (string, string, bool) {
 	case strings.Contains(lowerMsg, "not a git repository"):
 		summary = "Git repository not found"
 	default:
-		// Extract first meaningful line (skip "pull:" prefix if present)
+		// Extract first meaningful line (skip common prefixes)
 		lines := strings.Split(fullMsg, "\n")
 		if len(lines) > 0 {
 			firstLine := strings.TrimSpace(lines[0])
-			// Remove common prefixes
 			firstLine = strings.TrimPrefix(firstLine, "pull: ")
+			firstLine = strings.TrimPrefix(firstLine, "rebase failed: ")
+			firstLine = strings.TrimPrefix(firstLine, "merge failed: ")
 			if len(firstLine) > 60 {
 				firstLine = firstLine[:57] + "..."
 			}
 			summary = firstLine
 		} else {
-			summary = "Pull failed (unknown error)"
+			summary = "Operation failed (unknown error)"
 		}
 	}
 

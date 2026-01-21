@@ -712,7 +712,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 			// Parse error for summary and divergence detection
 			if msg.Err != nil {
-				summary, full, diverged := summarizePullError(msg.Err)
+				summary, full, diverged := summarizeGitError(msg.Err)
 				p.mergeState.CleanupResults.PullErrorSummary = summary
 				p.mergeState.CleanupResults.PullErrorFull = full
 				p.mergeState.CleanupResults.BranchDiverged = diverged
@@ -734,8 +734,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				p.mergeState.CleanupResults.PullErrorSummary = ""
 				p.mergeState.CleanupResults.PullErrorFull = ""
 			} else {
-				// Rebase failed - update error display
-				summary, full, diverged := summarizePullError(msg.Err)
+				// Rebase failed - update error state
+				p.mergeState.CleanupResults.PullError = msg.Err
+				summary, full, diverged := summarizeGitError(msg.Err)
 				p.mergeState.CleanupResults.PullErrorSummary = summary
 				p.mergeState.CleanupResults.PullErrorFull = full
 				p.mergeState.CleanupResults.BranchDiverged = diverged
@@ -752,8 +753,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				p.mergeState.CleanupResults.PullErrorSummary = ""
 				p.mergeState.CleanupResults.PullErrorFull = ""
 			} else {
-				// Merge failed - update error display
-				summary, full, diverged := summarizePullError(msg.Err)
+				// Merge failed - update error state
+				p.mergeState.CleanupResults.PullError = msg.Err
+				summary, full, diverged := summarizeGitError(msg.Err)
 				p.mergeState.CleanupResults.PullErrorSummary = summary
 				p.mergeState.CleanupResults.PullErrorFull = full
 				p.mergeState.CleanupResults.BranchDiverged = diverged
