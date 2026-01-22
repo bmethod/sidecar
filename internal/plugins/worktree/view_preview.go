@@ -251,7 +251,10 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 	if p.autoScrollOutput && !interactive {
 		lines := wt.Agent.OutputBuf.Lines()
 		if idx := lastNonEmptyLine(lines); idx >= 0 {
-			effectiveLineCount = idx + 1
+			nonEmptyCount := idx + 1
+			if nonEmptyCount < visibleHeight {
+				effectiveLineCount = nonEmptyCount
+			}
 		} else {
 			effectiveLineCount = 0
 		}
@@ -423,7 +426,10 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 	if p.autoScrollOutput && !interactive {
 		lines := shell.Agent.OutputBuf.Lines()
 		if idx := lastNonEmptyLine(lines); idx >= 0 {
-			effectiveLineCount = idx + 1
+			nonEmptyCount := idx + 1
+			if nonEmptyCount < visibleHeight {
+				effectiveLineCount = nonEmptyCount
+			}
 		} else {
 			effectiveLineCount = 0
 		}
