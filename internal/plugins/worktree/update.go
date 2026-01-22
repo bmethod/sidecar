@@ -346,8 +346,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	// Shell session messages
 	case ShellCreatedMsg:
 		if msg.Err != nil {
-			// Creation failed, don't update state
-			return p, nil
+			// Creation failed, show error toast
+			return p, func() tea.Msg {
+				return app.ToastMsg{Message: msg.Err.Error(), Duration: 5 * time.Second, IsError: true}
+			}
 		}
 		// Create new shell session entry
 		shell := &ShellSession{

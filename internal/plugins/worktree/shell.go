@@ -223,6 +223,12 @@ func (p *Plugin) generateShellSessionName() string {
 
 // createNewShell creates a new shell session and returns a command.
 func (p *Plugin) createNewShell() tea.Cmd {
+	if !isTmuxInstalled() {
+		return func() tea.Msg {
+			return ShellCreatedMsg{Err: fmt.Errorf("tmux not installed: %s", getTmuxInstallInstructions())}
+		}
+	}
+
 	sessionName := p.generateShellSessionName()
 	// Extract index from session name (e.g., "sidecar-sh-project-3" -> 3)
 	// This ensures correct numbering after kills (e.g., Shell 1, Shell 3)
