@@ -415,7 +415,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 	case "n":
 		// Open type selector modal to choose between Shell and Worktree
 		p.viewMode = ViewModeTypeSelector
-		p.typeSelectorIdx = 1 // Default to Worktree (more common)
+		p.typeSelectorIdx = 1    // Default to Worktree (more common)
 		p.typeSelectorHover = -1 // No hover initially (0-based: -1 = none)
 		return nil
 	case "D":
@@ -508,6 +508,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "\\":
 		p.toggleSidebar()
+		if p.viewMode == ViewModeInteractive {
+			return tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate(), p.queryCursorPositionCmd())
+		}
 	case "tab", "shift+tab":
 		// Switch focus between panes (consistent with other plugins)
 		if p.activePane == PaneSidebar && p.sidebarVisible {

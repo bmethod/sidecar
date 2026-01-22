@@ -383,11 +383,18 @@ func (p *Plugin) pollShellSessionByName(tmuxName string) tea.Cmd {
 	// Capture references before spawning closure to avoid data races
 	outputBuf := shell.Agent.OutputBuf
 	maxBytes := p.tmuxCaptureMaxBytes
+	selectedShell := p.getSelectedShell()
+	interactiveCapture := p.viewMode == ViewModeInteractive &&
+		p.interactiveState != nil &&
+		p.interactiveState.Active &&
+		p.shellSelected &&
+		selectedShell != nil &&
+		selectedShell.TmuxName == tmuxName
 
 	return func() tea.Msg {
-		// Use capturePaneDirect which is faster for shells (they don't benefit from batch capture)
-		// Shell sessions have prefix "sidecar-sh-" not "sidecar-wt-" so batch capture skips them
-		output, err := capturePaneDirect(tmuxName)
+		// Use direct capture for shells (no batch), preserving wraps in interactive mode.
+		// Shell sessions have prefix "sidecar-sh-" not "sidecar-wt-" so batch capture skips them.
+		output, err := capturePaneDirectWithJoin(tmuxName, !interactiveCapture)
 		if err != nil {
 			// Capture error - check error message to determine if session is dead
 			// Avoid synchronous sessionExists() call which would block (td-c2961e)

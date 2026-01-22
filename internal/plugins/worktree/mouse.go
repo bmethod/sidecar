@@ -768,5 +768,8 @@ func (p *Plugin) handleMouseDrag(action mouse.MouseAction) tea.Cmd {
 func (p *Plugin) handleMouseDragEnd() tea.Cmd {
 	// Persist sidebar width
 	_ = state.SetWorktreeSidebarWidth(p.sidebarWidth)
+	if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active {
+		return tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate(), p.queryCursorPositionCmd())
+	}
 	return nil
 }

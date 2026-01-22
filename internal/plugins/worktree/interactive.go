@@ -337,6 +337,10 @@ func (p *Plugin) enterInteractiveMode() tea.Cmd {
 		target = sessionName // Fall back to session name if pane ID not available
 	}
 	if target != "" {
+		// Reset scroll offsets so cursor alignment matches the visible pane (td-43d37b)
+		p.previewOffset = 0
+		p.previewHorizOffset = 0
+		p.autoScrollOutput = true
 		previewWidth, previewHeight := p.calculatePreviewDimensions()
 		p.resizeTmuxPane(target, previewWidth, previewHeight)
 	}
@@ -408,6 +412,28 @@ func (p *Plugin) calculatePreviewDimensions() (width, height int) {
 	}
 
 	return width, height
+}
+
+// resizeInteractivePaneCmd resizes the active interactive tmux pane to match the UI.
+// This is used after window/sidebar resizing to keep cursor position aligned.
+func (p *Plugin) resizeInteractivePaneCmd() tea.Cmd {
+	if p.interactiveState == nil || !p.interactiveState.Active {
+		return nil
+	}
+
+	target := p.interactiveState.TargetPane
+	if target == "" {
+		target = p.interactiveState.TargetSession
+	}
+	if target == "" {
+		return nil
+	}
+
+	previewWidth, previewHeight := p.calculatePreviewDimensions()
+	return func() tea.Msg {
+		p.resizeTmuxPane(target, previewWidth, previewHeight)
+		return nil
+	}
 }
 
 // resizeTmuxPane resizes a tmux pane to the specified dimensions.

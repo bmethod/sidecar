@@ -16,6 +16,14 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		p.width = msg.Width
+		p.height = msg.Height
+		if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active {
+			return p, tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate(), p.queryCursorPositionCmd())
+		}
+		return p, nil
+
 	case app.PluginFocusedMsg:
 		if p.focused {
 			// Poll shell or selected agent when plugin gains focus
@@ -270,6 +278,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			wt.Agent.LastOutput = time.Now()
 			wt.Agent.WaitingFor = msg.WaitingFor
 			wt.Status = msg.Status
+			// Track poll time for runaway detection (td-018f25)
+			wt.Agent.RecordPollTime()
 		}
 		// Update bracketed paste mode if in interactive mode for this worktree (td-79ab6163)
 		if p.viewMode == ViewModeInteractive && !p.shellSelected {
@@ -287,6 +297,12 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		case StatusDone, StatusError:
 			interval = pollIntervalDone
 		}
+		// Check for runaway session and throttle if needed (td-018f25)
+		if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+			if wt.Agent.CheckRunaway() {
+				interval = pollIntervalThrottled
+			}
+		}
 		if !p.outputVisibleFor(msg.WorktreeName) {
 			background := p.backgroundPollInterval()
 			if background > interval {
@@ -297,6 +313,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, tea.Batch(cmds...)
 
 	case AgentPollUnchangedMsg:
+		// Track unchanged poll for throttle reset (td-018f25)
+		if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+			wt.Agent.RecordUnchangedPoll()
+		}
 		// Content unchanged - use longer interval based on current status
 		interval := pollIntervalIdle
 		switch msg.CurrentStatus {
@@ -305,13 +325,23 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		case StatusDone, StatusError:
 			interval = pollIntervalDone
 		}
+		// If still throttled, maintain throttle interval (td-018f25)
+		if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil && wt.Agent.PollsThrottled {
+			interval = pollIntervalThrottled
+		}
 		if !p.outputVisibleFor(msg.WorktreeName) {
 			background := p.backgroundPollInterval()
 			if background > interval {
 				interval = background
 			}
 		}
-		return p, p.scheduleAgentPoll(msg.WorktreeName, interval)
+		cmds = append(cmds, p.scheduleAgentPoll(msg.WorktreeName, interval))
+		if p.viewMode == ViewModeInteractive && !p.shellSelected {
+			if wt := p.selectedWorktree(); wt != nil && wt.Name == msg.WorktreeName {
+				cmds = append(cmds, p.queryCursorPositionCmd())
+			}
+		}
+		return p, tea.Batch(cmds...)
 
 	// Shell session messages
 	case ShellCreatedMsg:
@@ -372,8 +402,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				}
 				p.shells = append(p.shells[:i], p.shells[i+1:]...)
 				delete(p.managedSessions, msg.SessionName)
-				// Clean up pane cache
+				// Clean up pane cache and active registry (td-018f25)
 				globalPaneCache.remove(msg.SessionName)
+				globalActiveRegistry.remove(msg.SessionName)
 				break
 			}
 		}
@@ -412,8 +443,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				}
 				p.shells = append(p.shells[:i], p.shells[i+1:]...)
 				delete(p.managedSessions, msg.TmuxName)
-				// Clean up pane cache
+				// Clean up pane cache and active registry (td-018f25)
 				globalPaneCache.remove(msg.TmuxName)
+				globalActiveRegistry.remove(msg.TmuxName)
 				break
 			}
 		}
@@ -448,9 +480,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			if selectedShell := p.getSelectedShell(); selectedShell != nil && selectedShell.TmuxName == msg.TmuxName {
 				p.updateBracketedPasteMode(msg.Output)
 				// Query cursor position async when output changes in interactive mode (td-648af4)
-				if msg.Changed {
-					cmds = append(cmds, p.queryCursorPositionCmd())
-				}
+				cmds = append(cmds, p.queryCursorPositionCmd())
 			}
 		}
 		// Schedule next poll with adaptive interval
@@ -509,8 +539,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			sessionName := tmuxSessionPrefix + sanitizeName(wt.Name)
 			wt.Agent = nil
 			wt.Status = StatusPaused
-			// Clean up cache and session tracking (td-53e8a023)
+			// Clean up cache, active registry, and session tracking (td-53e8a023, td-018f25)
 			globalPaneCache.remove(sessionName)
+			globalActiveRegistry.remove(sessionName)
 			delete(p.managedSessions, sessionName)
 		}
 		delete(p.agents, msg.WorktreeName)

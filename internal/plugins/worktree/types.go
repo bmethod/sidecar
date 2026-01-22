@@ -214,6 +214,12 @@ type Agent struct {
 	OutputBuf   *OutputBuffer // Last N lines of output
 	Status      AgentStatus
 	WaitingFor  string // Prompt text if waiting
+
+	// Runaway detection fields (td-018f25)
+	// Track recent poll times to detect continuous output that would cause CPU spikes.
+	RecentPollTimes    []time.Time // Last N poll times for runaway detection
+	PollsThrottled     bool        // True if this agent is throttled due to continuous output
+	UnchangedPollCount int         // Consecutive unchanged polls (for throttle reset)
 }
 
 // InteractiveState tracks state for interactive mode (tmux input passthrough).

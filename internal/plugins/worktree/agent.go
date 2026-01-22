@@ -75,6 +75,52 @@ var globalPaneCache = &paneCache{
 
 var globalCaptureCoordinator = newCaptureCoordinator()
 
+// activeSessionRegistry tracks sessions that have been recently polled (td-018f25).
+// Used by batch capture to only capture sessions that are actively being monitored,
+// avoiding unnecessary captures of idle sessions.
+type activeSessionRegistry struct {
+	mu      sync.Mutex
+	entries map[string]time.Time
+	ttl     time.Duration
+}
+
+// globalActiveRegistry tracks sessions with recent poll activity.
+var globalActiveRegistry = &activeSessionRegistry{
+	entries: make(map[string]time.Time),
+	ttl:     30 * time.Second, // Consider session active if polled within 30s
+}
+
+// markActive records that a session was just polled.
+func (r *activeSessionRegistry) markActive(session string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries[session] = time.Now()
+}
+
+// getActiveSessions returns sessions that have been polled recently.
+func (r *activeSessionRegistry) getActiveSessions() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now()
+	var active []string
+	for session, lastPoll := range r.entries {
+		if now.Sub(lastPoll) < r.ttl {
+			active = append(active, session)
+		} else {
+			// Clean up stale entry
+			delete(r.entries, session)
+		}
+	}
+	return active
+}
+
+// remove deletes a session from the registry (called when session ends).
+func (r *activeSessionRegistry) remove(session string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.entries, session)
+}
+
 // get returns cached output if valid, or empty string if expired/missing
 func (c *paneCache) get(session string) (string, bool) {
 	c.mu.Lock()
@@ -169,6 +215,7 @@ const (
 	pollIntervalDone       = 20 * time.Second       // Agent completed/exited (was 10s)
 	pollIntervalBackground = 10 * time.Second       // Output not visible, plugin focused (was 5s)
 	pollIntervalUnfocused  = 20 * time.Second       // Plugin not focused (was 15s)
+	pollIntervalThrottled  = 20 * time.Second       // Runaway session throttled (td-018f25)
 
 	// Poll staggering to prevent simultaneous subprocess spawns
 	pollStaggerMax = 400 * time.Millisecond // Max stagger offset based on worktree name hash
@@ -180,6 +227,12 @@ const (
 	// Prompt extraction window - chars from end to search for prompts
 	// ~15 lines of 150 chars each = 2250, but we use 2560 for UTF-8 safety margin
 	promptCheckBytes = 2560
+
+	// Runaway detection thresholds (td-018f25)
+	// Detect sessions producing continuous output and throttle them to reduce CPU usage.
+	runawayPollCount    = 20               // Number of polls to track
+	runawayTimeWindow   = 3 * time.Second  // If 20 polls happen within this window = runaway
+	runawayResetCount   = 3                // Consecutive unchanged polls to reset throttle
 )
 
 // AgentStartedMsg signals an agent has been started in a worktree.
@@ -221,6 +274,50 @@ type pollAgentMsg struct {
 // reconnectedAgentsMsg delivers reconnected agents from startup.
 type reconnectedAgentsMsg struct {
 	Cmds []tea.Cmd
+}
+
+// RecordPollTime records a poll time for runaway detection (td-018f25).
+// Should be called when an AgentOutputMsg (content changed) is received.
+func (a *Agent) RecordPollTime() {
+	now := time.Now()
+	a.RecentPollTimes = append(a.RecentPollTimes, now)
+	// Keep only the last N poll times
+	if len(a.RecentPollTimes) > runawayPollCount {
+		a.RecentPollTimes = a.RecentPollTimes[len(a.RecentPollTimes)-runawayPollCount:]
+	}
+	// Reset unchanged count since content changed
+	a.UnchangedPollCount = 0
+}
+
+// RecordUnchangedPoll records an unchanged poll for throttle reset (td-018f25).
+// Should be called when an AgentPollUnchangedMsg is received.
+func (a *Agent) RecordUnchangedPoll() {
+	a.UnchangedPollCount++
+	// If enough unchanged polls, reset throttle
+	if a.PollsThrottled && a.UnchangedPollCount >= runawayResetCount {
+		a.PollsThrottled = false
+		a.RecentPollTimes = nil // Clear history
+		a.UnchangedPollCount = 0
+	}
+}
+
+// CheckRunaway checks if this agent should be throttled (td-018f25).
+// Returns true and sets PollsThrottled if runaway condition is detected.
+func (a *Agent) CheckRunaway() bool {
+	if a.PollsThrottled {
+		return true // Already throttled
+	}
+	if len(a.RecentPollTimes) < runawayPollCount {
+		return false // Not enough data
+	}
+	// Check if runawayPollCount polls happened within runawayTimeWindow
+	oldest := a.RecentPollTimes[0]
+	elapsed := time.Since(oldest)
+	if elapsed < runawayTimeWindow {
+		a.PollsThrottled = true
+		return true
+	}
+	return false
 }
 
 // StartAgent creates a tmux session and starts an agent for a worktree.
@@ -644,9 +741,27 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 	outputBuf := wt.Agent.OutputBuf
 	currentStatus := wt.Status
 
+	// Use non-joined capture when interactive mode is active for this worktree
+	// to preserve tmux line wrapping for cursor positioning (td-c7dd1e).
+	interactiveCapture := p.viewMode == ViewModeInteractive &&
+		p.interactiveState != nil &&
+		p.interactiveState.Active &&
+		!p.shellSelected
+	if interactiveCapture {
+		if selected := p.selectedWorktree(); selected == nil || selected.Name != worktreeName {
+			interactiveCapture = false
+		}
+	}
+
 	// Return a tea.Cmd that spawns a goroutine for async capture
 	return func() tea.Msg {
-		output, err := capturePane(sessionName)
+		var output string
+		var err error
+		if interactiveCapture {
+			output, err = capturePaneDirectWithJoin(sessionName, false)
+		} else {
+			output, err = capturePane(sessionName)
+		}
 		if err != nil {
 			// Session may have been killed
 			if strings.Contains(err.Error(), "can't find") ||
@@ -697,15 +812,19 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 
 // capturePane captures the last N lines of a tmux pane.
 // Uses caching to avoid redundant subprocess calls when multiple worktrees poll simultaneously.
-// On cache miss, captures ALL sidecar sessions at once to populate cache for other polls.
+// On cache miss, captures active sessions at once to populate cache for concurrent polls.
+// Only captures sessions that have been recently polled (td-018f25).
 func capturePane(sessionName string) (string, error) {
+	// Mark this session as active (td-018f25)
+	globalActiveRegistry.markActive(sessionName)
+
 	// Check cache first
 	if output, ok := globalPaneCache.get(sessionName); ok {
 		return output, nil
 	}
 
-	// Cache miss - batch capture all sidecar sessions (singleflight)
-	outputs, err, ran := globalCaptureCoordinator.runBatch(batchCaptureAllSessions)
+	// Cache miss - batch capture active sidecar sessions (singleflight)
+	outputs, err, ran := globalCaptureCoordinator.runBatch(batchCaptureActiveSessions)
 	if !ran {
 		// Another goroutine captured; re-check cache
 		if output, ok := globalPaneCache.get(sessionName); ok {
@@ -732,10 +851,21 @@ func capturePane(sessionName string) (string, error) {
 
 // capturePaneDirect captures a single pane without caching.
 func capturePaneDirect(sessionName string) (string, error) {
+	return capturePaneDirectWithJoin(sessionName, true)
+}
+
+// capturePaneDirectWithJoin captures a single pane without caching.
+// When joinWrapped is false, tmux preserves wrapped lines for correct cursor alignment.
+func capturePaneDirectWithJoin(sessionName string, joinWrapped bool) (string, error) {
 	startLine := fmt.Sprintf("-%d", captureLineCount)
 	ctx, cancel := context.WithTimeout(context.Background(), tmuxCaptureTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "tmux", "capture-pane", "-p", "-e", "-J", "-S", startLine, "-t", sessionName)
+	args := []string{"capture-pane", "-p", "-e"}
+	if joinWrapped {
+		args = append(args, "-J")
+	}
+	args = append(args, "-S", startLine, "-t", sessionName)
+	cmd := exec.CommandContext(ctx, "tmux", args...)
 	output, err := cmd.Output()
 	if ctx.Err() == context.DeadlineExceeded {
 		return "", fmt.Errorf("capture-pane: timeout after %s", tmuxCaptureTimeout)
@@ -746,17 +876,32 @@ func capturePaneDirect(sessionName string) (string, error) {
 	return string(output), nil
 }
 
-// batchCaptureAllSessions captures all sidecar-wt-* sessions in a single subprocess.
+// batchCaptureActiveSessions captures only recently-polled sidecar sessions (td-018f25).
 // Returns map of session name to output.
-func batchCaptureAllSessions() (map[string]string, error) {
-	// Single shell command that lists sessions and captures each
-	// Uses a unique delimiter to separate outputs
+// If there are 0-1 active sessions, returns empty map to signal caller should use direct capture.
+func batchCaptureActiveSessions() (map[string]string, error) {
+	// Get list of recently-polled sessions
+	activeSessions := globalActiveRegistry.getActiveSessions()
+
+	// If only 0-1 active sessions, skip batch capture overhead
+	// Let caller use direct capture instead
+	if len(activeSessions) <= 1 {
+		return nil, nil
+	}
+
+	// Build bash script that only captures active sessions
+	// Quote session names to handle special characters safely
+	var quotedSessions []string
+	for _, s := range activeSessions {
+		quotedSessions = append(quotedSessions, fmt.Sprintf("%q", s))
+	}
+
 	script := fmt.Sprintf(`
-for session in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^%s'); do
+for session in %s; do
     echo "===SIDECAR_SESSION:$session==="
     tmux capture-pane -p -e -J -S -%d -t "$session" 2>/dev/null
 done
-`, tmuxSessionPrefix, captureLineCount)
+`, strings.Join(quotedSessions, " "), captureLineCount)
 
 	ctx, cancel := context.WithTimeout(context.Background(), tmuxBatchCaptureTimeout)
 	defer cancel()
@@ -1129,7 +1274,7 @@ func (p *Plugin) reconnectAgents() tea.Cmd {
 			agent := &Agent{
 				Type:        AgentClaude, // Default, will be detected from output
 				TmuxSession: session,
-				TmuxPane:    paneID, // Capture pane ID for interactive mode
+				TmuxPane:    paneID,     // Capture pane ID for interactive mode
 				StartedAt:   time.Now(), // Unknown actual start
 				OutputBuf:   NewOutputBuffer(outputBufferCap),
 			}
@@ -1157,6 +1302,7 @@ func (p *Plugin) Cleanup(removeSessions bool) error {
 				exec.Command("tmux", "kill-session", "-t", agent.TmuxSession).Run()
 				delete(p.managedSessions, agent.TmuxSession)
 				globalPaneCache.remove(agent.TmuxSession)
+				globalActiveRegistry.remove(agent.TmuxSession) // td-018f25
 			}
 		}
 		delete(p.agents, name)
@@ -1190,6 +1336,7 @@ func (p *Plugin) CleanupOrphanedSessions() error {
 			exec.Command("tmux", "kill-session", "-t", session).Run()
 			delete(p.managedSessions, session)
 			globalPaneCache.remove(session)
+			globalActiveRegistry.remove(session) // td-018f25
 		}
 	}
 	return nil
