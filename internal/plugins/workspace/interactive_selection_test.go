@@ -26,11 +26,13 @@ func newSelectionTestPlugin() *Plugin {
 	return p
 }
 
-// actionAt creates a mouse action at the given coordinates with the preview pane region.
+// actionAt creates a mouse action at the given content column with the preview pane region.
+// The x parameter is a content column; panelOverhead/2 is added to simulate the viewport
+// X coordinate (accounting for left border + left padding).
 func actionAt(x, y int) mouse.MouseAction {
 	return mouse.MouseAction{
 		Type: mouse.ActionClick,
-		X:    x,
+		X:    x + panelOverhead/2,
 		Y:    y,
 		Region: &mouse.Region{
 			ID:   regionPreviewPane,
@@ -552,7 +554,7 @@ func TestInteractiveColAtX_PlainText(t *testing.T) {
 	p.selectedShellIdx = 0
 	p.interactiveSelectionRect = mouse.Rect{X: 0, Y: 2, W: 80, H: 12}
 
-	col, ok := p.interactiveColAtX(5, 0)
+	col, ok := p.interactiveColAtX(5+panelOverhead/2, 0)
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
@@ -573,7 +575,7 @@ func TestInteractiveColAtX_BeyondLineEnd(t *testing.T) {
 	p.selectedShellIdx = 0
 	p.interactiveSelectionRect = mouse.Rect{X: 0, Y: 2, W: 80, H: 12}
 
-	col, ok := p.interactiveColAtX(100, 0)
+	col, ok := p.interactiveColAtX(100+panelOverhead/2, 0)
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
@@ -596,8 +598,8 @@ func TestInteractiveColAtX_WithHorizOffset(t *testing.T) {
 	p.interactiveSelectionRect = mouse.Rect{X: 0, Y: 2, W: 80, H: 12}
 	p.previewHorizOffset = 3
 
-	// X=2 with offset 3 → visual col 5
-	col, ok := p.interactiveColAtX(2, 0)
+	// viewport X=4 (content col 2) with offset 3 → visual col 5
+	col, ok := p.interactiveColAtX(2+panelOverhead/2, 0)
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
@@ -618,7 +620,7 @@ func TestInteractiveColAtX_EmptyLine(t *testing.T) {
 	p.selectedShellIdx = 0
 	p.interactiveSelectionRect = mouse.Rect{X: 0, Y: 2, W: 80, H: 12}
 
-	col, ok := p.interactiveColAtX(0, 0)
+	col, ok := p.interactiveColAtX(0+panelOverhead/2, 0)
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
@@ -647,7 +649,7 @@ func TestCharacterLevelDrag_SameLineRightward(t *testing.T) {
 	// Drag to col 10
 	dragAction := mouse.MouseAction{
 		Type: mouse.ActionDrag,
-		X:    10,
+		X:    10 + panelOverhead/2,
 		Y:    4,
 		Region: &mouse.Region{
 			ID:   regionPreviewPane,
@@ -682,7 +684,7 @@ func TestCharacterLevelDrag_SameLineBackward(t *testing.T) {
 	// Drag backward to col 3
 	dragAction := mouse.MouseAction{
 		Type: mouse.ActionDrag,
-		X:    3,
+		X:    3 + panelOverhead/2,
 		Y:    4,
 		Region: &mouse.Region{
 			ID:   regionPreviewPane,
@@ -718,7 +720,7 @@ func TestCharacterLevelDrag_MultiLineDown(t *testing.T) {
 	// Drag to (3, line 3) → Y=7
 	dragAction := mouse.MouseAction{
 		Type: mouse.ActionDrag,
-		X:    3,
+		X:    3 + panelOverhead/2,
 		Y:    7,
 		Region: &mouse.Region{
 			ID:   regionPreviewPane,
@@ -753,7 +755,7 @@ func TestCharacterLevelDrag_DirectionReversal(t *testing.T) {
 	// Drag right to col 12
 	dragAction := mouse.MouseAction{
 		Type: mouse.ActionDrag,
-		X:    12,
+		X:    12 + panelOverhead/2,
 		Y:    4,
 		Region: &mouse.Region{
 			ID:   regionPreviewPane,
@@ -768,7 +770,7 @@ func TestCharacterLevelDrag_DirectionReversal(t *testing.T) {
 	}
 
 	// Now reverse past anchor to col 3
-	dragAction.X = 3
+	dragAction.X = 3 + panelOverhead/2
 	p.handleInteractiveSelectionDrag(dragAction)
 
 	if p.interactiveSelStart.col != 3 || p.interactiveSelEnd.col != 8 {

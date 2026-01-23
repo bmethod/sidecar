@@ -57,7 +57,7 @@ func (p *Plugin) isInteractiveLineSelected(lineIdx int) bool {
 // interactiveColAtX maps a viewport X coordinate to a visual column in the given line.
 // The returned column is in visual space (post-tab-expansion, accounting for multi-width chars).
 func (p *Plugin) interactiveColAtX(x, lineIdx int) (int, bool) {
-	relX := x - p.interactiveSelectionRect.X
+	relX := x - p.interactiveSelectionRect.X - panelOverhead/2
 	if relX < 0 {
 		return 0, false
 	}
