@@ -284,6 +284,9 @@ All plugins with two-pane layouts (Git, Conversations, Files) share consistent s
 | `git-commit-preview` | Commit preview | Commit detail in right pane |
 | `git-diff` | Full diff | Full-screen diff view |
 | `git-commit` | Commit editor | Text input active |
+| `git-push-menu` | Push menu | Push strategy selection |
+| `git-pull-menu` | Pull menu | Pull strategy selection |
+| `git-pull-conflict` | Pull conflict | Conflict resolution modal |
 | `git-history` | History view | Commit history |
 | `git-commit-detail` | Commit detail | Single commit view |
 
@@ -304,6 +307,21 @@ All plugins with two-pane layouts (Git, Conversations, Files) share consistent s
 | `o` | open-in-github | Open commit in GitHub |
 | `v` | toggle-graph | Toggle commit graph (tree view) |
 | `\` | toggle-sidebar | Collapse/expand sidebar |
+
+#### Git Pull Menu Shortcuts
+| Key | Command | Description |
+|-----|---------|-------------|
+| `p` | pull-merge | Pull with merge (default) |
+| `r` | pull-rebase | Pull with rebase |
+| `f` | pull-ff-only | Pull fast-forward only |
+| `a` | pull-autostash | Pull rebase + autostash |
+| `Esc` | cancel | Close pull menu |
+
+#### Git Pull Conflict Shortcuts
+| Key | Command | Description |
+|-----|---------|-------------|
+| `a` | abort-pull | Abort the merge/rebase |
+| `Esc` | dismiss | Dismiss modal, resolve manually |
 
 ### File Browser Plugin
 | Context | View | Description |

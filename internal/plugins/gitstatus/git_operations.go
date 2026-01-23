@@ -92,16 +92,78 @@ func (p *Plugin) doFetch() tea.Cmd {
 	}
 }
 
-// doPull pulls from remote.
+// doPull pulls from remote (default merge strategy).
 func (p *Plugin) doPull() tea.Cmd {
 	workDir := p.repoRoot
 	return func() tea.Msg {
 		output, err := ExecutePull(workDir)
 		if err != nil {
-			return PullErrorMsg{Err: err}
+			return PullErrorMsg{Err: err, Strategy: "merge"}
 		}
 		return PullSuccessMsg{Output: output}
 	}
+}
+
+// doPullRebase pulls from remote with rebase.
+func (p *Plugin) doPullRebase() tea.Cmd {
+	workDir := p.repoRoot
+	return func() tea.Msg {
+		output, err := ExecutePullRebase(workDir)
+		if err != nil {
+			return PullErrorMsg{Err: err, Strategy: "rebase"}
+		}
+		return PullSuccessMsg{Output: output}
+	}
+}
+
+// doPullFFOnly pulls from remote with fast-forward only.
+func (p *Plugin) doPullFFOnly() tea.Cmd {
+	workDir := p.repoRoot
+	return func() tea.Msg {
+		output, err := ExecutePullFFOnly(workDir)
+		if err != nil {
+			return PullErrorMsg{Err: err, Strategy: "ff-only"}
+		}
+		return PullSuccessMsg{Output: output}
+	}
+}
+
+// doPullAutostash pulls from remote with rebase and autostash.
+func (p *Plugin) doPullAutostash() tea.Cmd {
+	workDir := p.repoRoot
+	return func() tea.Msg {
+		output, err := ExecutePullAutostash(workDir)
+		if err != nil {
+			return PullErrorMsg{Err: err, Strategy: "autostash"}
+		}
+		return PullSuccessMsg{Output: output}
+	}
+}
+
+// doAbortPull aborts the current merge or rebase.
+func (p *Plugin) doAbortPull() tea.Cmd {
+	workDir := p.repoRoot
+	conflictType := p.pullConflictType
+	return func() tea.Msg {
+		var err error
+		if conflictType == "rebase" {
+			err = AbortRebase(workDir)
+		} else {
+			err = AbortMerge(workDir)
+		}
+		if err != nil {
+			return PullErrorMsg{Err: err}
+		}
+		return PullAbortedMsg{}
+	}
+}
+
+// canPull returns true if pull is possible (has remote, not detached HEAD).
+func (p *Plugin) canPull() bool {
+	if p.pushStatus != nil && p.pushStatus.DetachedHead {
+		return false
+	}
+	return HasRemote(p.repoRoot)
 }
 
 // doDiscard executes the git discard operation.

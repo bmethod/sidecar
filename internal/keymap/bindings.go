@@ -119,6 +119,17 @@ func DefaultBindings() []Binding {
 		{Key: "y", Command: "yank-diff", Context: "git-diff"},
 		{Key: "c", Command: "commit", Context: "git-diff"},
 
+		// Git pull menu context
+		{Key: "p", Command: "pull-merge", Context: "git-pull-menu"},
+		{Key: "r", Command: "pull-rebase", Context: "git-pull-menu"},
+		{Key: "f", Command: "pull-ff-only", Context: "git-pull-menu"},
+		{Key: "a", Command: "pull-autostash", Context: "git-pull-menu"},
+		{Key: "esc", Command: "cancel", Context: "git-pull-menu"},
+
+		// Git pull conflict context
+		{Key: "a", Command: "abort-pull", Context: "git-pull-conflict"},
+		{Key: "esc", Command: "dismiss", Context: "git-pull-conflict"},
+
 		// Git commit context
 		{Key: "ctrl+s", Command: "execute-commit", Context: "git-commit"},
 		{Key: "ctrl+enter", Command: "execute-commit", Context: "git-commit"},

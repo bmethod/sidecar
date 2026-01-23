@@ -33,9 +33,11 @@ const (
 	ViewModeDiff                            // Full-screen diff view
 	ViewModeCommit                          // Commit message editor
 	ViewModePushMenu                        // Push options popup menu
+	ViewModePullMenu                        // Pull options popup menu
 	ViewModeConfirmDiscard                  // Confirm discard changes modal
 	ViewModeBranchPicker                    // Branch selection modal
 	ViewModeConfirmStashPop                 // Confirm stash pop modal
+	ViewModePullConflict                    // Pull conflict resolution modal
 )
 
 // FocusPane represents which pane is active in the three-pane view.
@@ -106,6 +108,15 @@ type Plugin struct {
 	pushMenuFocus          int       // 0=push, 1=force, 2=upstream
 	pushMenuHover          int       // -1=none, 0=push, 1=force, 2=upstream
 	pushPreservedCommitHash string   // Hash of selected commit when push started
+
+	// Pull menu state
+	pullMenuReturnMode ViewMode // Mode to return to when pull menu closes
+	pullMenuFocus      int      // 0=merge, 1=rebase, 2=ff-only, 3=autostash
+	pullMenuHover      int      // -1=none, 0-3=menu item hover
+
+	// Pull conflict state
+	pullConflictFiles []string // Conflicted files from failed pull
+	pullConflictType  string   // "merge" or "rebase"
 
 	// View dimensions
 	width  int
@@ -275,6 +286,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p.updateCommit(msg)
 		case ViewModePushMenu:
 			return p.updatePushMenu(msg)
+		case ViewModePullMenu:
+			return p.updatePullMenu(msg)
+		case ViewModePullConflict:
+			return p.updatePullConflict(msg)
 		case ViewModeConfirmDiscard:
 			return p.updateConfirmDiscard(msg)
 		case ViewModeConfirmStashPop:
@@ -294,6 +309,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p.handleBranchPickerMouse(msg)
 		case ViewModeCommit:
 			return p.handleCommitMouse(msg)
+		case ViewModePullMenu:
+			return p.handlePullMenuMouse(msg)
 		}
 
 	case app.RefreshMsg:
@@ -569,8 +586,28 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case PullErrorMsg:
 		p.pullInProgress = false
+		if IsConflictError(msg.Err) {
+			// Detect conflict type from strategy
+			if msg.Strategy == "rebase" || msg.Strategy == "autostash" {
+				p.pullConflictType = "rebase"
+			} else {
+				p.pullConflictType = "merge"
+			}
+			p.pullConflictFiles = GetConflictedFiles(p.repoRoot)
+			if len(p.pullConflictFiles) > 0 {
+				p.viewMode = ViewModePullConflict
+				p.pullMenuFocus = 0
+				return p, nil
+			}
+		}
 		p.pullError = msg.Err.Error()
 		return p, nil
+
+	case PullAbortedMsg:
+		p.pullConflictFiles = nil
+		p.pullConflictType = ""
+		p.pullError = ""
+		return p, tea.Batch(p.refresh(), p.loadRecentCommits())
 
 	case FetchSuccessClearMsg:
 		p.fetchSuccess = false
@@ -637,6 +674,10 @@ func (p *Plugin) View(width, height int) string {
 		content = p.renderCommitModal()
 	case ViewModePushMenu:
 		content = p.renderPushMenu()
+	case ViewModePullMenu:
+		content = p.renderPullMenu()
+	case ViewModePullConflict:
+		content = p.renderPullConflict()
 	case ViewModeConfirmDiscard:
 		content = p.renderConfirmDiscard()
 	case ViewModeConfirmStashPop:
@@ -725,6 +766,15 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "force-push", Name: "Force", Description: "Force push", Category: plugin.CategoryGit, Context: "git-push-menu", Priority: 1},
 		{ID: "push-upstream", Name: "Upstream", Description: "Push & set upstream", Category: plugin.CategoryGit, Context: "git-push-menu", Priority: 1},
 		{ID: "cancel", Name: "Cancel", Description: "Cancel", Category: plugin.CategoryNavigation, Context: "git-push-menu", Priority: 2},
+		// git-pull-menu context
+		{ID: "pull-merge", Name: "Merge", Description: "Pull with merge", Category: plugin.CategoryGit, Context: "git-pull-menu", Priority: 1},
+		{ID: "pull-rebase", Name: "Rebase", Description: "Pull with rebase", Category: plugin.CategoryGit, Context: "git-pull-menu", Priority: 1},
+		{ID: "pull-ff-only", Name: "FF-only", Description: "Pull fast-forward only", Category: plugin.CategoryGit, Context: "git-pull-menu", Priority: 1},
+		{ID: "pull-autostash", Name: "Autostash", Description: "Pull rebase + autostash", Category: plugin.CategoryGit, Context: "git-pull-menu", Priority: 1},
+		{ID: "cancel", Name: "Cancel", Description: "Cancel", Category: plugin.CategoryNavigation, Context: "git-pull-menu", Priority: 2},
+		// git-pull-conflict context
+		{ID: "abort-pull", Name: "Abort", Description: "Abort merge/rebase", Category: plugin.CategoryGit, Context: "git-pull-conflict", Priority: 1},
+		{ID: "dismiss", Name: "Dismiss", Description: "Dismiss and resolve manually", Category: plugin.CategoryNavigation, Context: "git-pull-conflict", Priority: 2},
 	}
 }
 
@@ -737,6 +787,10 @@ func (p *Plugin) FocusContext() string {
 		return "git-commit"
 	case ViewModePushMenu:
 		return "git-push-menu"
+	case ViewModePullMenu:
+		return "git-pull-menu"
+	case ViewModePullConflict:
+		return "git-pull-conflict"
 	default:
 		if p.activePane == PaneDiff {
 			// Commit preview pane has different context than file diff pane
@@ -979,8 +1033,12 @@ type PullSuccessMsg struct {
 
 // PullErrorMsg is sent when pull fails.
 type PullErrorMsg struct {
-	Err error
+	Err      error
+	Strategy string // "merge", "rebase", "ff-only", "autostash"
 }
+
+// PullAbortedMsg is sent when a conflicted pull is aborted.
+type PullAbortedMsg struct{}
 
 // StashErrorMsg is sent when stash operations fail.
 type StashErrorMsg struct {
