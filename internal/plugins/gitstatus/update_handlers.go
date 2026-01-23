@@ -240,6 +240,17 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			return p, nil
 		}
 
+	case "A":
+		// Amend last commit (no staged files required)
+		if len(p.recentCommits) > 0 {
+			p.commitAmend = true
+			p.viewMode = ViewModeCommit
+			p.initCommitTextarea()
+			msg := getLastCommitMessage(p.repoRoot)
+			p.commitMessage.SetValue(msg)
+			return p, nil
+		}
+
 	case "P":
 		// Open push menu (following lazygit convention)
 		if p.canPush() && !p.pushInProgress {
@@ -678,6 +689,7 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "esc":
 		// Cancel commit, return to status
 		p.viewMode = ViewModeStatus
+		p.commitAmend = false
 		p.commitError = ""
 		return p, nil
 
@@ -713,7 +725,7 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	return p, nil
 }
 
-// tryCommit attempts to execute the commit if message is valid.
+// tryCommit attempts to execute the commit (or amend) if message is valid.
 func (p *Plugin) tryCommit() tea.Cmd {
 	message := strings.TrimSpace(p.commitMessage.Value())
 	if message == "" {
@@ -721,6 +733,9 @@ func (p *Plugin) tryCommit() tea.Cmd {
 		return nil
 	}
 	p.commitInProgress = true
+	if p.commitAmend {
+		return p.doAmend(message)
+	}
 	return p.doCommit(message)
 }
 

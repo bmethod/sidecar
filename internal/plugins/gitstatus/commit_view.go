@@ -69,7 +69,11 @@ func (p *Plugin) renderCommit() string {
 
 	// Header with stats
 	statsStr := fmt.Sprintf("[%d: +%d -%d]", fileCount, additions, deletions)
-	title := styles.Title.Render(" Commit ")
+	titleText := " Commit "
+	if p.commitAmend {
+		titleText = " Amend "
+	}
+	title := styles.Title.Render(titleText)
 	statsRendered := styles.Muted.Render(statsStr)
 	padding := contentWidth - lipgloss.Width(title) - lipgloss.Width(statsStr)
 	if padding < 1 {
@@ -136,7 +140,11 @@ func (p *Plugin) renderCommit() string {
 		boolToInt(p.commitButtonHover),
 		1, // button index 1
 	)
-	sb.WriteString(buttonStyle.Render(" Commit "))
+	buttonLabel := " Commit "
+	if p.commitAmend {
+		buttonLabel = " Amend "
+	}
+	sb.WriteString(buttonStyle.Render(buttonLabel))
 	sb.WriteString("  ")
 	sb.WriteString(styles.Muted.Render("Tab/Enter"))
 
@@ -149,7 +157,11 @@ func (p *Plugin) renderCommit() string {
 	// Progress indicator
 	if p.commitInProgress {
 		sb.WriteString("\n")
-		sb.WriteString(styles.Muted.Render("Committing..."))
+		progressText := "Committing..."
+		if p.commitAmend {
+			progressText = "Amending..."
+		}
+		sb.WriteString(styles.Muted.Render(progressText))
 	}
 
 	sb.WriteString("\n")
@@ -224,8 +236,12 @@ func (p *Plugin) registerCommitButtonHitRegion() {
 	// Button X: startX + border(1) + padding(2) = content start
 	buttonX := startX + 3
 
-	// Button width: " Commit " = 8 chars + padding(4) from Button style = 12
-	buttonWidth := 12
+	// Button width: label + padding(4) from Button style
+	buttonLabel := " Commit "
+	if p.commitAmend {
+		buttonLabel = " Amend "
+	}
+	buttonWidth := len(buttonLabel) + 4
 
 	p.mouseHandler.HitMap.Clear()
 	p.mouseHandler.HitMap.AddRect(regionCommitButton, buttonX, buttonLineY, buttonWidth, 1, nil)

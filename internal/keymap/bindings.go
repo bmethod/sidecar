@@ -51,6 +51,7 @@ func DefaultBindings() []Binding {
 		{Key: "S", Command: "stage-all", Context: "git-status"},
 		{Key: "U", Command: "unstage-all", Context: "git-status"},
 		{Key: "c", Command: "commit", Context: "git-status"},
+		{Key: "A", Command: "amend", Context: "git-status"},
 		{Key: "d", Command: "show-diff", Context: "git-status"},
 		{Key: "enter", Command: "show-diff", Context: "git-status"},
 		{Key: "r", Command: "refresh", Context: "git-status"},

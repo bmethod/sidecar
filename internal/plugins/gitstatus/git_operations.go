@@ -20,6 +20,19 @@ func (p *Plugin) doCommit(message string) tea.Cmd {
 	}
 }
 
+// doAmend executes git commit --amend asynchronously.
+func (p *Plugin) doAmend(message string) tea.Cmd {
+	workDir := p.repoRoot
+	return func() tea.Msg {
+		hash, err := ExecuteAmend(workDir, message)
+		if err != nil {
+			return CommitErrorMsg{Err: err}
+		}
+		subject := strings.Split(message, "\n")[0]
+		return CommitSuccessMsg{Hash: hash, Subject: subject}
+	}
+}
+
 // doPush executes a git push asynchronously.
 func (p *Plugin) doPush(force bool) tea.Cmd {
 	workDir := p.repoRoot

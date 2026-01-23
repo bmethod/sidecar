@@ -130,6 +130,7 @@ type Plugin struct {
 	commitMessage     textarea.Model
 	commitError       string
 	commitInProgress  bool
+	commitAmend       bool // true when amending last commit
 	commitButtonFocus bool // true when button is focused instead of textarea
 	commitButtonHover bool // true when mouse is hovering over button
 
@@ -361,6 +362,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.viewMode = ViewModeStatus
 		p.commitMessage.Reset()
 		p.commitInProgress = false
+		p.commitAmend = false
 		p.commitError = ""
 		return p, p.refresh()
 
@@ -717,6 +719,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "stage-file", Name: "Stage", Description: "Stage selected file for commit", Category: plugin.CategoryGit, Context: "git-status", Priority: 1},
 		{ID: "unstage-file", Name: "Unstage", Description: "Remove file from staging area", Category: plugin.CategoryGit, Context: "git-status", Priority: 1},
 		{ID: "commit", Name: "Commit", Description: "Open commit message editor", Category: plugin.CategoryGit, Context: "git-status", Priority: 1},
+		{ID: "amend", Name: "Amend", Description: "Amend last commit", Category: plugin.CategoryGit, Context: "git-status", Priority: 3},
 		{ID: "show-diff", Name: "Diff", Description: "View file changes", Category: plugin.CategoryView, Context: "git-status", Priority: 2},
 		{ID: "stage-all", Name: "Stage all", Description: "Stage all modified files", Category: plugin.CategoryGit, Context: "git-status", Priority: 2},
 		{ID: "unstage-all", Name: "Unstage all", Description: "Unstage all files", Category: plugin.CategoryGit, Context: "git-status", Priority: 2},

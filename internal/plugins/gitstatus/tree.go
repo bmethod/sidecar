@@ -478,6 +478,38 @@ func ExecuteCommit(workDir, message string) (string, error) {
 	return "", nil
 }
 
+// ExecuteAmend executes a git commit --amend with the given message.
+func ExecuteAmend(workDir, message string) (string, error) {
+	cmd := exec.Command("git", "commit", "--amend", "-m", message)
+	cmd.Dir = workDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", &CommitError{Output: string(output), Err: err}
+	}
+
+	// Parse output for commit hash (same format as regular commit)
+	lines := strings.Split(string(output), "\n")
+	if len(lines) > 0 {
+		re := regexp.MustCompile(`\[[\w/-]+ ([a-f0-9]+)\]`)
+		matches := re.FindStringSubmatch(lines[0])
+		if len(matches) > 1 {
+			return matches[1], nil
+		}
+	}
+	return "", nil
+}
+
+// getLastCommitMessage returns the message of the most recent commit.
+func getLastCommitMessage(workDir string) string {
+	cmd := exec.Command("git", "log", "-1", "--format=%B")
+	cmd.Dir = workDir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(output), "\n")
+}
+
 // CommitError wraps a git commit error with its output.
 type CommitError struct {
 	Output string
