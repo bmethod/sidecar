@@ -624,9 +624,10 @@ func (p *Plugin) AttachToWorktreeDir(wt *Worktree) tea.Cmd {
 		p.managedSessions[sessionName] = true
 	}
 
-	// Attach to the session
+	// Attach to the session - resize to full terminal first so no dot borders appear
 	c := exec.Command("tmux", "attach-session", "-t", sessionName)
 	return tea.Sequence(
+		p.resizeForAttachCmd(sessionName),
 		tea.Printf("\nAttaching to %s. Press Ctrl-b d to return to sidecar.\n", wt.Name),
 		tea.ExecProcess(c, func(err error) tea.Msg {
 			return TmuxAttachFinishedMsg{WorktreeName: wt.Name, Err: err}
@@ -1215,11 +1216,18 @@ func (p *Plugin) AttachToSession(wt *Worktree) tea.Cmd {
 		return nil
 	}
 
-	// Use tea.ExecProcess to suspend Bubble Tea and run tmux attach
-	c := exec.Command("tmux", "attach-session", "-t", wt.Agent.TmuxSession)
+	sessionName := wt.Agent.TmuxSession
+	target := wt.Agent.TmuxPane
+	if target == "" {
+		target = sessionName
+	}
 
-	// Print hint before attaching, then attach
+	// Use tea.ExecProcess to suspend Bubble Tea and run tmux attach
+	c := exec.Command("tmux", "attach-session", "-t", sessionName)
+
+	// Resize to full terminal before attaching so no dot borders appear
 	return tea.Sequence(
+		p.resizeForAttachCmd(target),
 		tea.Printf("\nAttaching to %s. Press Ctrl-b d to return to sidecar.\n", wt.Name),
 		tea.ExecProcess(c, func(err error) tea.Msg {
 			return TmuxAttachFinishedMsg{WorktreeName: wt.Name, Err: err}

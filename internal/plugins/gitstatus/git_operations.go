@@ -8,7 +8,7 @@ import (
 
 // doCommit executes the git commit asynchronously.
 func (p *Plugin) doCommit(message string) tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		hash, err := ExecuteCommit(workDir, message)
 		if err != nil {
@@ -22,7 +22,7 @@ func (p *Plugin) doCommit(message string) tea.Cmd {
 
 // doPush executes a git push asynchronously.
 func (p *Plugin) doPush(force bool) tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		output, err := ExecutePush(workDir, force)
 		if err != nil {
@@ -34,7 +34,7 @@ func (p *Plugin) doPush(force bool) tea.Cmd {
 
 // doPushForce executes a force push with lease.
 func (p *Plugin) doPushForce() tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		output, err := ExecutePushForce(workDir)
 		if err != nil {
@@ -46,7 +46,7 @@ func (p *Plugin) doPushForce() tea.Cmd {
 
 // doPushSetUpstream executes a push with upstream tracking.
 func (p *Plugin) doPushSetUpstream() tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		output, err := ExecutePushSetUpstream(workDir)
 		if err != nil {
@@ -63,7 +63,7 @@ func (p *Plugin) canPush() bool {
 
 // doStashPush stashes all current changes.
 func (p *Plugin) doStashPush() tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		err := StashPush(workDir)
 		return StashResultMsg{Operation: "push", Err: err}
@@ -72,7 +72,7 @@ func (p *Plugin) doStashPush() tea.Cmd {
 
 // doStashPop pops the latest stash.
 func (p *Plugin) doStashPop() tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		err := StashPop(workDir)
 		return StashResultMsg{Operation: "pop", Ref: "stash@{0}", Err: err}
@@ -82,7 +82,7 @@ func (p *Plugin) doStashPop() tea.Cmd {
 
 // doFetch fetches from remote.
 func (p *Plugin) doFetch() tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		output, err := ExecuteFetch(workDir)
 		if err != nil {
@@ -94,7 +94,7 @@ func (p *Plugin) doFetch() tea.Cmd {
 
 // doPull pulls from remote.
 func (p *Plugin) doPull() tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		output, err := ExecutePull(workDir)
 		if err != nil {
@@ -106,7 +106,7 @@ func (p *Plugin) doPull() tea.Cmd {
 
 // doDiscard executes the git discard operation.
 func (p *Plugin) doDiscard(entry *FileEntry) tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		var err error
 		if entry.Status == StatusUntracked {

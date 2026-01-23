@@ -3,7 +3,9 @@ package gitstatus
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -48,8 +50,9 @@ const commitHistoryPageSize = 50
 
 // Plugin implements the git status plugin.
 type Plugin struct {
-	ctx       *plugin.Context
-	tree      *FileTree
+	ctx      *plugin.Context
+	repoRoot string // Resolved git repo root (may differ from ctx.WorkDir if started in subdirectory)
+	tree     *FileTree
 	focused   bool
 	cursor    int
 	scrollOff int
@@ -194,16 +197,29 @@ func (p *Plugin) Name() string { return pluginName }
 // Icon returns the plugin icon character.
 func (p *Plugin) Icon() string { return pluginIcon }
 
+// resolveGitRoot returns the top-level directory of the git repository
+// containing dir, or an error if dir is not inside a git repo.
+func resolveGitRoot(dir string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // Init initializes the plugin with context.
 func (p *Plugin) Init(ctx *plugin.Context) error {
-	// Check if we're in a git repository
-	gitDir := filepath.Join(ctx.WorkDir, ".git")
-	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+	// Resolve git repo root (works from any subdirectory)
+	root, err := resolveGitRoot(ctx.WorkDir)
+	if err != nil {
 		return err // Not a git repo, silently degrade
 	}
 
 	p.ctx = ctx
-	p.tree = NewFileTree(ctx.WorkDir)
+	p.repoRoot = root
+	p.tree = NewFileTree(root)
 
 	// Load saved diff view mode preference
 	if state.GetGitDiffMode() == "side-by-side" {
@@ -762,7 +778,7 @@ func (p *Plugin) refresh() tea.Cmd {
 // startWatcher starts the file system watcher.
 func (p *Plugin) startWatcher() tea.Cmd {
 	return func() tea.Msg {
-		watcher, err := NewWatcher(p.ctx.WorkDir)
+		watcher, err := NewWatcher(p.repoRoot)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
@@ -792,7 +808,7 @@ func (p *Plugin) openFile(path string) tea.Cmd {
 		if editor == "" {
 			editor = "vim"
 		}
-		fullPath := filepath.Join(p.ctx.WorkDir, path)
+		fullPath := filepath.Join(p.repoRoot, path)
 		return plugin.OpenFileMsg{Editor: editor, Path: fullPath}
 	}
 }
@@ -1030,7 +1046,7 @@ func (p *Plugin) clearPullSuccessAfterDelay() tea.Cmd {
 
 // confirmStashPop fetches the latest stash and shows the confirm modal.
 func (p *Plugin) confirmStashPop() tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		stashList, err := GetStashList(workDir)
 		if err != nil || len(stashList.Stashes) == 0 {

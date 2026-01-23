@@ -58,7 +58,7 @@ func (p *Plugin) updateBranchPicker(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 // doSwitchBranch switches to a different branch.
 func (p *Plugin) doSwitchBranch(branchName string) tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		err := CheckoutBranch(workDir, branchName)
 		if err != nil {
@@ -70,7 +70,7 @@ func (p *Plugin) doSwitchBranch(branchName string) tea.Cmd {
 
 // loadBranches loads the branch list.
 func (p *Plugin) loadBranches() tea.Cmd {
-	workDir := p.ctx.WorkDir
+	workDir := p.repoRoot
 	return func() tea.Msg {
 		branches, err := GetBranches(workDir)
 		if err != nil {

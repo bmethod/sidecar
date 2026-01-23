@@ -288,8 +288,17 @@ func (p *Plugin) attachToShellByIndex(idx int) tea.Cmd {
 	sessionName := shell.TmuxName
 	displayName := shell.Name
 
+	target := ""
+	if shell.Agent != nil && shell.Agent.TmuxPane != "" {
+		target = shell.Agent.TmuxPane
+	} else {
+		target = sessionName
+	}
+
 	c := exec.Command("tmux", "attach-session", "-t", sessionName)
+	// Resize to full terminal before attaching so no dot borders appear
 	return tea.Sequence(
+		p.resizeForAttachCmd(target),
 		tea.Printf("\nAttaching to %s. Press Ctrl-b d to return to sidecar.\n", displayName),
 		tea.ExecProcess(c, func(err error) tea.Msg {
 			return ShellDetachedMsg{Err: err}

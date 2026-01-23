@@ -882,6 +882,11 @@ func (p *Plugin) cyclePreviewTab(delta int) tea.Cmd {
 func (p *Plugin) loadSelectedContent() tea.Cmd {
 	var cmds []tea.Cmd
 
+	// Resize selected pane to match preview width so capture output is correct
+	if cmd := p.resizeSelectedPaneCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+
 	// If shell is selected, poll shell output immediately
 	if shell := p.getSelectedShell(); shell != nil && shell.Agent != nil && p.previewTab == PreviewTabOutput {
 		cmds = append(cmds, p.pollShellSessionByName(shell.TmuxName))

@@ -90,7 +90,7 @@ func (p *Plugin) openCommitInGitHub() tea.Cmd {
 		return nil
 	}
 
-	remoteURL := GetRemoteURL(p.ctx.WorkDir)
+	remoteURL := GetRemoteURL(p.repoRoot)
 	if remoteURL == "" {
 		return msg.ShowToast("No remote configured", 2*time.Second)
 	}

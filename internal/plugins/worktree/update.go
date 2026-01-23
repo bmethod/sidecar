@@ -23,7 +23,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			// Poll captures cursor atomically - no separate query needed
 			return p, tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate())
 		}
-		return p, nil
+		// Resize selected pane in background so capture-pane output matches preview width
+		return p, p.resizeSelectedPaneCmd()
 
 	case app.PluginFocusedMsg:
 		if p.focused {
@@ -254,6 +255,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			p.agents[msg.WorktreeName] = agent
 			p.managedSessions[msg.SessionName] = true
 
+			// Resize pane to match preview width immediately
+			if cmd := p.resizeSelectedPaneCmd(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 			// Start polling for output
 			cmds = append(cmds, p.scheduleAgentPoll(msg.WorktreeName, 500*time.Millisecond))
 		}
@@ -420,12 +425,20 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.activePane = PaneSidebar
 		p.autoScrollOutput = true
 
+		// Resize pane to match preview width immediately
+		if cmd := p.resizeSelectedPaneCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		// Start polling for output using stable TmuxName
 		cmds = append(cmds, p.scheduleShellPollByName(shell.TmuxName, 500*time.Millisecond))
 
 	case ShellDetachedMsg:
 		// User detached from shell session - re-enable mouse and resume polling
 		cmds = append(cmds, func() tea.Msg { return tea.EnableMouseAllMotion() })
+		// Resize pane back to preview dimensions
+		if cmd := p.resizeSelectedPaneCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		if shell := p.getSelectedShell(); shell != nil {
 			cmds = append(cmds, p.scheduleShellPollByName(shell.TmuxName, 0)) // Immediate poll
 		}
@@ -641,6 +654,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 		// Re-enable mouse after tea.ExecProcess (tmux attach disables it)
 		cmds = append(cmds, func() tea.Msg { return tea.EnableMouseAllMotion() })
+
+		// Resize pane back to preview dimensions
+		if cmd := p.resizeSelectedPaneCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 
 		// Resume polling and refresh to capture what happened while attached
 		if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {

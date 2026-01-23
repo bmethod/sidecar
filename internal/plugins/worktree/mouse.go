@@ -798,5 +798,5 @@ func (p *Plugin) handleMouseDragEnd() tea.Cmd {
 		// Poll captures cursor atomically - no separate query needed
 		return tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate())
 	}
-	return nil
+	return p.resizeSelectedPaneCmd()
 }

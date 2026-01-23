@@ -520,12 +520,24 @@ func (p *Plugin) resizeInteractivePaneCmd() tea.Cmd {
 	if target == "" {
 		target = p.interactiveState.TargetSession
 	}
+
+	return p.resizeTmuxTargetCmd(target)
+}
+
+// resizeTmuxTargetCmd returns a tea.Cmd that resizes a tmux target to preview dimensions.
+// Skips resize if current size already matches. Retries once if verify fails.
+func (p *Plugin) resizeTmuxTargetCmd(target string) tea.Cmd {
 	if target == "" {
 		return nil
 	}
 
 	previewWidth, previewHeight := p.calculatePreviewDimensions()
 	return func() tea.Msg {
+		if actualWidth, actualHeight, ok := queryPaneSize(target); ok {
+			if actualWidth == previewWidth && actualHeight == previewHeight {
+				return nil
+			}
+		}
 		p.resizeTmuxPane(target, previewWidth, previewHeight)
 		if actualWidth, actualHeight, ok := queryPaneSize(target); ok {
 			if actualWidth != previewWidth || actualHeight != previewHeight {
@@ -556,13 +568,14 @@ func (p *Plugin) maybeResizeInteractivePane(paneWidth, paneHeight int) tea.Cmd {
 	return p.resizeInteractivePaneCmd()
 }
 
-// resizeTmuxPane resizes a tmux pane to the specified dimensions.
+// resizeTmuxPane resizes a tmux window/pane to the specified dimensions.
+// resize-window works for detached sessions; resize-pane is a fallback.
 func (p *Plugin) resizeTmuxPane(paneID string, width, height int) {
 	if width <= 0 && height <= 0 {
 		return
 	}
 
-	args := []string{"resize-pane", "-t", paneID}
+	args := []string{"resize-window", "-t", paneID}
 	if width > 0 {
 		args = append(args, "-x", strconv.Itoa(width))
 	}
@@ -570,7 +583,19 @@ func (p *Plugin) resizeTmuxPane(paneID string, width, height int) {
 		args = append(args, "-y", strconv.Itoa(height))
 	}
 	cmd := exec.Command("tmux", args...)
-	_ = cmd.Run() // Ignore errors - pane may not support resize
+	if err := cmd.Run(); err == nil {
+		return
+	}
+
+	// Fallback for older tmux or attached clients that reject resize-window.
+	args = []string{"resize-pane", "-t", paneID}
+	if width > 0 {
+		args = append(args, "-x", strconv.Itoa(width))
+	}
+	if height > 0 {
+		args = append(args, "-y", strconv.Itoa(height))
+	}
+	_ = exec.Command("tmux", args...).Run()
 }
 
 func queryPaneSize(target string) (width, height int, ok bool) {
@@ -592,6 +617,55 @@ func queryPaneSize(target string) (width, height int, ok bool) {
 	width, _ = strconv.Atoi(parts[0])
 	height, _ = strconv.Atoi(parts[1])
 	return width, height, true
+}
+
+// resizeSelectedPaneCmd resizes the currently selected tmux pane to match the
+// preview dimensions. Called in non-interactive mode so that capture-pane output
+// is already wrapped at the correct width.
+func (p *Plugin) resizeSelectedPaneCmd() tea.Cmd {
+	if !features.IsEnabled(features.TmuxInteractiveInput.Name) {
+		return nil
+	}
+	return p.resizeTmuxTargetCmd(p.previewResizeTarget())
+}
+
+// resizeForAttachCmd resizes the tmux pane to the full terminal size before
+// attaching, so the user gets the full available space without dot borders.
+func (p *Plugin) resizeForAttachCmd(target string) tea.Cmd {
+	if target == "" {
+		return nil
+	}
+	width, height := p.width, p.height
+	if width <= 0 || height <= 0 {
+		return nil
+	}
+	return func() tea.Msg {
+		p.resizeTmuxPane(target, width, height)
+		return nil
+	}
+}
+
+// previewResizeTarget returns the tmux target for the currently selected pane.
+func (p *Plugin) previewResizeTarget() string {
+	if p.shellSelected {
+		shell := p.getSelectedShell()
+		if shell == nil || shell.Agent == nil {
+			return ""
+		}
+		if shell.Agent.TmuxPane != "" {
+			return shell.Agent.TmuxPane
+		}
+		return shell.Agent.TmuxSession
+	}
+
+	wt := p.selectedWorktree()
+	if wt == nil || wt.Agent == nil {
+		return ""
+	}
+	if wt.Agent.TmuxPane != "" {
+		return wt.Agent.TmuxPane
+	}
+	return wt.Agent.TmuxSession
 }
 
 // exitInteractiveMode exits interactive mode and returns to list view.
