@@ -61,7 +61,7 @@ html[data-theme='dark'][data-custom-theme='molokai'] {
   --sc-panel-2: #1b1f26;
   --sc-border: rgba(255, 255, 255, 0.08);
   --sc-border-2: rgba(255, 255, 255, 0.12);
-  --sc-glow: rgba(102, 217, 239, 0.08);
+  --sc-glow: rgba(102, 217, 239, 0.18);
 }
 
 /* --- Nord (Arctic Blue) --- */
@@ -93,7 +93,7 @@ html[data-theme='dark'][data-custom-theme='nord'] {
   --sc-panel-2: #3B4252;
   --sc-border: rgba(76, 86, 106, 0.3);    /* Polar Night 4 */
   --sc-border-2: rgba(67, 76, 94, 0.3);   /* Polar Night 3 */
-  --sc-glow: rgba(136, 192, 208, 0.1);
+  --sc-glow: rgba(136, 192, 208, 0.22);
 }
 
 /* --- Solarized Dark (Precision) --- */
@@ -125,7 +125,7 @@ html[data-theme='dark'][data-custom-theme='solarized-dark'] {
   --sc-panel-2: #073642;
   --sc-border: rgba(88, 110, 117, 0.25);   /* Base01 */
   --sc-border-2: rgba(101, 123, 131, 0.25); /* Base00 */
-  --sc-glow: rgba(38, 139, 210, 0.1);
+  --sc-glow: rgba(38, 139, 210, 0.22);
 }
 
 /* --- Tokyo Night (Vibrant) --- */
@@ -157,7 +157,7 @@ html[data-theme='dark'][data-custom-theme='tokyo-night'] {
   --sc-panel-2: #24283B;
   --sc-border: rgba(86, 95, 137, 0.3);
   --sc-border-2: rgba(65, 72, 104, 0.3);
-  --sc-glow: rgba(122, 162, 247, 0.15);
+  --sc-glow: rgba(122, 162, 247, 0.28);
 }
 
 /* Navbar styling */
@@ -191,14 +191,16 @@ html[data-theme="dark"] .footer {
   background: var(--sc-panel-2);
 }
 
-/* Full-page gradient background - subtle modern version */
+/* Full-page gradient background - vivid version */
 html[data-theme="dark"]::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(ellipse 80vw 50vh at 50% -20%, var(--sc-glow), transparent 60%);
+    radial-gradient(ellipse 80vw 50vh at 50% -20%, var(--sc-glow), transparent 50%),
+    radial-gradient(ellipse 60vw 40vh at 80% 60%, var(--sc-glow), transparent 70%),
+    radial-gradient(ellipse 60vw 40vh at 20% 80%, var(--sc-glow), transparent 70%);
   pointer-events: none;
 }
 
@@ -245,10 +247,10 @@ a:hover {
   position: absolute;
   inset: -60px;
   background:
-    radial-gradient(520px 260px at 50% 8%, rgba(174, 129, 255, 0.22), transparent 60%),
-    radial-gradient(900px 420px at 35% 12%, rgba(249, 38, 114, 0.16), transparent 60%),
-    radial-gradient(900px 420px at 65% 10%, rgba(102, 217, 239, 0.14), transparent 60%),
-    radial-gradient(900px 520px at 50% 85%, rgba(166, 226, 46, 0.10), transparent 60%);
+    radial-gradient(520px 260px at 50% 8%, rgba(174, 129, 255, 0.42), transparent 60%),
+    radial-gradient(900px 420px at 35% 12%, rgba(249, 38, 114, 0.32), transparent 60%),
+    radial-gradient(900px 420px at 65% 10%, rgba(102, 217, 239, 0.28), transparent 60%),
+    radial-gradient(900px 520px at 50% 85%, rgba(166, 226, 46, 0.20), transparent 60%);
   pointer-events: none;
 }
 
@@ -345,19 +347,19 @@ a:hover {
 }
 
 .sc-titleTagline {
-  font-size: clamp(18px, 2.2vw, 24px);
+  font-size: clamp(32px, 5.5vw, 64px);
   font-family: "Fraunces", "Iowan Old Style", "Palatino", "Times New Roman", serif;
   font-optical-sizing: auto;
   font-weight: 500;
-  line-height: 1.3;
-  padding-bottom: 6px;
-  margin-bottom: 6px;
+  line-height: 1.2;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
   color: var(--sc-tagline-start, var(--ifm-font-color-secondary));
-  letter-spacing: -0.1px;
+  letter-spacing: -0.5px;
   background: linear-gradient(90deg,
     var(--sc-tagline-start, var(--ifm-color-primary)) 0%,
     var(--sc-tagline-middle, var(--sc-purple)) 35%,
-    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0.75) 50%,
     var(--sc-tagline-middle, var(--sc-purple)) 65%,
     var(--sc-tagline-start, var(--ifm-color-primary)) 100%);
   background-size: 200% 100%;
@@ -812,10 +814,10 @@ a:hover {
 .sc-cardHero {
   grid-column: span 12;
   background: linear-gradient(135deg,
-    rgba(166, 226, 46, 0.08) 0%,
+    rgba(166, 226, 46, 0.16) 0%,
     rgba(23, 26, 31, 0.92) 50%,
-    rgba(102, 217, 239, 0.06) 100%);
-  border-color: rgba(166, 226, 46, 0.2);
+    rgba(102, 217, 239, 0.12) 100%);
+  border-color: rgba(166, 226, 46, 0.35);
   padding: 22px 22px 20px;
 }
 
@@ -917,42 +919,42 @@ a:hover {
 /* Gradient variants */
 .sc-gradientGreen {
   background: linear-gradient(30deg,
-    rgba(166, 226, 46, 0.12) 0%,
+    rgba(166, 226, 46, 0.22) 0%,
     rgba(23, 26, 31, 0.95) 40%,
     rgba(23, 26, 31, 0.95) 100%);
-  border-color: rgba(166, 226, 46, 0.2);
+  border-color: rgba(166, 226, 46, 0.35);
 }
 
 .sc-gradientBlue {
   background: linear-gradient(30deg,
-    rgba(102, 217, 239, 0.12) 0%,
+    rgba(102, 217, 239, 0.22) 0%,
     rgba(23, 26, 31, 0.95) 40%,
     rgba(23, 26, 31, 0.95) 100%);
-  border-color: rgba(102, 217, 239, 0.2);
+  border-color: rgba(102, 217, 239, 0.35);
 }
 
 .sc-gradientPurple {
   background: linear-gradient(30deg,
-    rgba(174, 129, 255, 0.12) 0%,
+    rgba(174, 129, 255, 0.22) 0%,
     rgba(23, 26, 31, 0.95) 40%,
     rgba(23, 26, 31, 0.95) 100%);
-  border-color: rgba(174, 129, 255, 0.2);
+  border-color: rgba(174, 129, 255, 0.35);
 }
 
 .sc-gradientPink {
   background: linear-gradient(30deg,
-    rgba(249, 38, 114, 0.12) 0%,
+    rgba(249, 38, 114, 0.22) 0%,
     rgba(23, 26, 31, 0.95) 40%,
     rgba(23, 26, 31, 0.95) 100%);
-  border-color: rgba(249, 38, 114, 0.2);
+  border-color: rgba(249, 38, 114, 0.35);
 }
 
 .sc-gradientYellow {
   background: linear-gradient(30deg,
-    rgba(230, 219, 116, 0.12) 0%,
+    rgba(230, 219, 116, 0.22) 0%,
     rgba(23, 26, 31, 0.95) 40%,
     rgba(23, 26, 31, 0.95) 100%);
-  border-color: rgba(230, 219, 116, 0.2);
+  border-color: rgba(230, 219, 116, 0.35);
 }
 
 .sc-componentContent {
