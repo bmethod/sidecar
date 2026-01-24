@@ -204,27 +204,72 @@ func ContrastRatio(fg, bg string) float64 {
 	return (l1 + 0.05) / (l2 + 0.05)
 }
 
-// EnsureContrast adjusts fg toward the foreground pole (white for dark bg, black for light bg)
-// until the contrast ratio against bg meets minRatio. Returns the original fg if already sufficient.
+// EnsureContrast adjusts fg until the contrast ratio against bg meets minRatio.
+// Blends toward whichever pole (white or black) achieves the target with the smallest shift.
+// Returns the original fg if already sufficient.
 func EnsureContrast(fg, bg string, minRatio float64) string {
-	if ContrastRatio(fg, bg) >= minRatio {
+	return ensureContrastForBackgrounds(fg, []string{bg}, minRatio)
+}
+
+func ensureContrastForBackgrounds(fg string, bgs []string, minRatio float64) string {
+	if len(bgs) == 0 {
 		return fg
 	}
-	isDark := Luminance(bg) < 0.5
-	target := "#ffffff"
-	if !isDark {
-		target = "#000000"
+
+	if minContrastRatio(fg, bgs) >= minRatio {
+		return fg
 	}
-	// Binary search for the minimum blend needed
-	lo, hi := 0.0, 1.0
-	for i := 0; i < 16; i++ {
-		mid := (lo + hi) / 2
-		candidate := Blend(fg, target, mid)
-		if ContrastRatio(candidate, bg) >= minRatio {
-			hi = mid
-		} else {
-			lo = mid
+
+	targets := []string{"#ffffff", "#000000"}
+	bestTarget := ""
+	bestBlend := 0.0
+	bestBlendFound := false
+	bestTargetContrast := 0.0
+	bestTargetColor := ""
+
+	for _, target := range targets {
+		targetMin := minContrastRatio(target, bgs)
+		if targetMin > bestTargetContrast {
+			bestTargetContrast = targetMin
+			bestTargetColor = target
+		}
+		if targetMin < minRatio {
+			continue
+		}
+		lo, hi := 0.0, 1.0
+		for i := 0; i < 16; i++ {
+			mid := (lo + hi) / 2
+			if minContrastRatio(Blend(fg, target, mid), bgs) >= minRatio {
+				hi = mid
+			} else {
+				lo = mid
+			}
+		}
+		if !bestBlendFound || hi < bestBlend {
+			bestBlendFound = true
+			bestBlend = hi
+			bestTarget = target
 		}
 	}
-	return Blend(fg, target, hi)
+
+	if bestBlendFound {
+		return Blend(fg, bestTarget, bestBlend)
+	}
+	if bestTargetColor != "" && bestTargetContrast > minContrastRatio(fg, bgs) {
+		return bestTargetColor
+	}
+	return fg
+}
+
+func minContrastRatio(fg string, bgs []string) float64 {
+	if len(bgs) == 0 {
+		return ContrastRatio(fg, "#000000")
+	}
+	minRatio := math.MaxFloat64
+	for _, bg := range bgs {
+		if ratio := ContrastRatio(fg, bg); ratio < minRatio {
+			minRatio = ratio
+		}
+	}
+	return minRatio
 }

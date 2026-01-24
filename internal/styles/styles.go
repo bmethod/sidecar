@@ -391,6 +391,39 @@ func RenderGradientTab(label string, tabIndex, totalTabs int, isActive bool) str
 	return renderGradientTab(label, tabIndex, totalTabs, isActive, CurrentTabColors)
 }
 
+func tabTextColor(isActive bool, backgrounds []RGB) lipgloss.Color {
+	minTarget := 3.5
+	candidates := []lipgloss.Color{TextSecondary, TextPrimary, TextMuted}
+	if isActive {
+		minTarget = 4.5
+		candidates = []lipgloss.Color{TextPrimary, TextSecondary, TextMuted}
+	}
+
+	best := candidates[0]
+	bestRatio := minContrastRatio(colorToRGB(best), backgrounds)
+	for _, candidate := range candidates[1:] {
+		if ratio := minContrastRatio(colorToRGB(candidate), backgrounds); ratio > bestRatio {
+			best = candidate
+			bestRatio = ratio
+		}
+	}
+
+	if bestRatio < minTarget {
+		for _, candidate := range []lipgloss.Color{lipgloss.Color("#000000"), lipgloss.Color("#ffffff")} {
+			if ratio := minContrastRatio(colorToRGB(candidate), backgrounds); ratio > bestRatio {
+				best = candidate
+				bestRatio = ratio
+			}
+		}
+	}
+
+	return best
+}
+
+func colorToRGB(c lipgloss.Color) RGB {
+	return HexToRGB(string(c))
+}
+
 // renderGradientTab renders a tab with per-character gradient coloring.
 func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, colors []RGB) string {
 	if totalTabs == 0 {
@@ -408,9 +441,10 @@ func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, col
 	// Add padding to label
 	padded := "  " + label + "  "
 	chars := []rune(padded)
+	backgrounds := make([]RGB, len(chars))
 	result := ""
 
-	for i, ch := range chars {
+	for i := range chars {
 		// Position within the gradient for this character
 		charPos := startPos + (endPos-startPos)*float64(i)/float64(len(chars))
 
@@ -423,14 +457,17 @@ func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, col
 			g = uint8(float64(g)*0.35 + 30)
 			b = uint8(float64(b)*0.35 + 30)
 		}
+		backgrounds[i] = RGB{float64(r), float64(g), float64(b)}
+	}
 
-		// Create style for this character
-		bg := lipgloss.Color(sprintf("#%02x%02x%02x", r, g, b))
+	textColor := tabTextColor(isActive, backgrounds)
+	for i, ch := range chars {
+		bg := lipgloss.Color(RGBToHex(backgrounds[i]))
 		var style lipgloss.Style
 		if isActive {
-			style = lipgloss.NewStyle().Background(bg).Foreground(TextPrimary).Bold(true)
+			style = lipgloss.NewStyle().Background(bg).Foreground(textColor).Bold(true)
 		} else {
-			style = lipgloss.NewStyle().Background(bg).Foreground(TextSecondary)
+			style = lipgloss.NewStyle().Background(bg).Foreground(textColor)
 		}
 		result += style.Render(string(ch))
 	}
@@ -460,14 +497,16 @@ func renderPerTabColor(label string, tabIndex int, isActive bool, colors []RGB) 
 		b = uint8(float64(b)*0.35 + 30)
 	}
 
-	bg := lipgloss.Color(sprintf("#%02x%02x%02x", r, g, b))
+	bgColor := RGB{float64(r), float64(g), float64(b)}
+	textColor := tabTextColor(isActive, []RGB{bgColor})
+	bg := lipgloss.Color(RGBToHex(bgColor))
 	padded := "  " + label + "  "
 
 	var style lipgloss.Style
 	if isActive {
-		style = lipgloss.NewStyle().Background(bg).Foreground(TextPrimary).Bold(true)
+		style = lipgloss.NewStyle().Background(bg).Foreground(textColor).Bold(true)
 	} else {
-		style = lipgloss.NewStyle().Background(bg).Foreground(TextSecondary)
+		style = lipgloss.NewStyle().Background(bg).Foreground(textColor)
 	}
 
 	return style.Render(padded)
@@ -477,11 +516,17 @@ func renderPerTabColor(label string, tabIndex int, isActive bool, colors []RGB) 
 func renderSolidTab(label string, isActive bool) string {
 	padded := "  " + label + "  "
 
-	var style lipgloss.Style
+	var bg lipgloss.Color
 	if isActive {
-		style = lipgloss.NewStyle().Background(Primary).Foreground(TextPrimary).Bold(true)
+		bg = Primary
 	} else {
-		style = lipgloss.NewStyle().Background(BgTertiary).Foreground(TextSecondary)
+		bg = BgTertiary
+	}
+
+	textColor := tabTextColor(isActive, []RGB{colorToRGB(bg)})
+	style := lipgloss.NewStyle().Background(bg).Foreground(textColor)
+	if isActive {
+		style = style.Bold(true)
 	}
 
 	return style.Render(padded)

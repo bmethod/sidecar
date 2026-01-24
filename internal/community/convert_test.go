@@ -22,9 +22,6 @@ func TestConvertCatppuccinMocha(t *testing.T) {
 	if palette.BgPrimary != scheme.Background {
 		t.Errorf("BgPrimary = %s, want %s", palette.BgPrimary, scheme.Background)
 	}
-	if palette.TextPrimary != scheme.Foreground {
-		t.Errorf("TextPrimary = %s, want %s", palette.TextPrimary, scheme.Foreground)
-	}
 	if palette.Error != scheme.Red {
 		t.Errorf("Error = %s, want %s (red)", palette.Error, scheme.Red)
 	}
@@ -37,6 +34,7 @@ func TestConvertCatppuccinMocha(t *testing.T) {
 		name, val string
 	}{
 		{"TextSecondary", palette.TextSecondary},
+		{"TextPrimary", palette.TextPrimary},
 		{"TextSubtle", palette.TextSubtle},
 		{"BgSecondary", palette.BgSecondary},
 		{"BgTertiary", palette.BgTertiary},
@@ -283,6 +281,7 @@ func TestAllSchemesMinimumContrast(t *testing.T) {
 		}
 		palette := Convert(scheme)
 		bg := palette.BgPrimary
+		bgTertiary := palette.BgTertiary
 
 		// TextMuted must have at least 3:1 contrast against background
 		if ratio := ContrastRatio(palette.TextMuted, bg); ratio < 3.0 {
@@ -295,6 +294,25 @@ func TestAllSchemesMinimumContrast(t *testing.T) {
 		// TabTextInactive must have at least 3:1
 		if ratio := ContrastRatio(palette.TabTextInactive, bg); ratio < 3.0 {
 			t.Errorf("%s: TabTextInactive contrast %.2f < 3.0 (fg=%s, bg=%s)", name, ratio, palette.TabTextInactive, bg)
+		}
+		// TextPrimary must have at least 4.5:1 against primary background.
+		if ratio := ContrastRatio(palette.TextPrimary, bg); ratio < 4.5 {
+			t.Errorf("%s: TextPrimary/BgPrimary contrast %.2f < 4.5 (fg=%s, bg=%s)", name, ratio, palette.TextPrimary, bg)
+		}
+		// TextSecondary must have at least 3.5:1 against primary background.
+		if ratio := ContrastRatio(palette.TextSecondary, bg); ratio < 3.5 {
+			t.Errorf("%s: TextSecondary/BgPrimary contrast %.2f < 3.5 (fg=%s, bg=%s)", name, ratio, palette.TextSecondary, bg)
+		}
+		derivedTertiary := scheme.SelectionBackground == "" || ColorDistance(bg, scheme.SelectionBackground) < 20
+		if derivedTertiary {
+			// TextPrimary must have at least 4.5:1 against BgTertiary (selected rows).
+			if ratio := ContrastRatio(palette.TextPrimary, bgTertiary); ratio < 4.5 {
+				t.Errorf("%s: TextPrimary/BgTertiary contrast %.2f < 4.5 (fg=%s, bg=%s)", name, ratio, palette.TextPrimary, bgTertiary)
+			}
+			// TextSecondary must have at least 3.5:1 against BgTertiary (buttons).
+			if ratio := ContrastRatio(palette.TextSecondary, bgTertiary); ratio < 3.5 {
+				t.Errorf("%s: TextSecondary/BgTertiary contrast %.2f < 3.5 (fg=%s, bg=%s)", name, ratio, palette.TextSecondary, bgTertiary)
+			}
 		}
 	}
 }
