@@ -2,6 +2,27 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.44.0] - 2026-01-23
+
+### Features
+- **File Browser**: Fast file browser with improved performance
+- **Projects**: Inline project creation from project switcher modal
+
+### Improvements
+- Eliminate interactive typing latency in worktree mode
+- Unify modal priority with ModalKind type and activeModal() helper
+- Remove side-scrolling
+- Update keybindings
+- Revert poll interval to 2s (fingerprint cache approach sufficient)
+
+### Bug Fixes
+- Fix button hit region calculation in project add modal
+- Fix exit shell in some situations
+- Remove dead shells properly
+
+### Dependencies
+- Updated embedded td to v0.21.0
+
 ## [v0.43.0] - 2026-01-23
 
 ### Features
