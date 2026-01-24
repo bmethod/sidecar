@@ -59,7 +59,7 @@ func DefaultBindings() []Binding {
 		{Key: "P", Command: "push", Context: "git-status"},
 		{Key: "f", Command: "fetch", Context: "git-status"},
 		{Key: "L", Command: "pull", Context: "git-status"},
-		{Key: "b", Command: "branch", Context: "git-status"},
+		{Key: "b", Command: "branch-picker", Context: "git-status"},
 		{Key: "z", Command: "stash", Context: "git-status"},
 		{Key: "Z", Command: "stash-pop", Context: "git-status"},
 		{Key: "O", Command: "open-in-file-browser", Context: "git-status"},
@@ -85,6 +85,7 @@ func DefaultBindings() []Binding {
 		{Key: "N", Command: "prev-match", Context: "git-status-commits"},
 		{Key: "o", Command: "open-in-github", Context: "git-status-commits"},
 		{Key: "v", Command: "toggle-graph", Context: "git-status-commits"},
+		{Key: "P", Command: "push", Context: "git-status-commits"},
 		{Key: "\\", Command: "toggle-sidebar", Context: "git-status-commits"},
 
 		// Git status diff context (inline)
@@ -95,14 +96,19 @@ func DefaultBindings() []Binding {
 		{Key: "enter", Command: "full-diff", Context: "git-status-diff"},
 		{Key: "s", Command: "stage-file", Context: "git-status-diff"},
 		{Key: "u", Command: "unstage-file", Context: "git-status-diff"},
+		{Key: "v", Command: "toggle-diff-view", Context: "git-status-diff"},
 		{Key: "\\", Command: "toggle-sidebar", Context: "git-status-diff"},
 
 		// Git commit preview context
 		{Key: "j", Command: "scroll-down", Context: "git-commit-preview"},
 		{Key: "k", Command: "scroll-up", Context: "git-commit-preview"},
+		{Key: "d", Command: "view-diff", Context: "git-commit-preview"},
+		{Key: "esc", Command: "back", Context: "git-commit-preview"},
 		{Key: "y", Command: "yank-commit", Context: "git-commit-preview"},
 		{Key: "Y", Command: "yank-id", Context: "git-commit-preview"},
 		{Key: "o", Command: "open-in-github", Context: "git-commit-preview"},
+		{Key: "b", Command: "open-in-file-browser", Context: "git-commit-preview"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "git-commit-preview"},
 
 		// Git diff context (full screen)
 		{Key: "esc", Command: "close-diff", Context: "git-diff"},
@@ -119,6 +125,14 @@ func DefaultBindings() []Binding {
 		{Key: "]", Command: "next-file", Context: "git-diff"},
 		{Key: "y", Command: "yank-diff", Context: "git-diff"},
 		{Key: "c", Command: "commit", Context: "git-diff"},
+		{Key: "v", Command: "toggle-diff-view", Context: "git-diff"},
+		{Key: "\\", Command: "toggle-sidebar", Context: "git-diff"},
+
+		// Git push menu context
+		{Key: "p", Command: "push", Context: "git-push-menu"},
+		{Key: "f", Command: "force-push", Context: "git-push-menu"},
+		{Key: "u", Command: "push-upstream", Context: "git-push-menu"},
+		{Key: "esc", Command: "cancel", Context: "git-push-menu"},
 
 		// Git pull menu context
 		{Key: "p", Command: "pull-merge", Context: "git-pull-menu"},
@@ -134,7 +148,7 @@ func DefaultBindings() []Binding {
 		// Git commit context
 		{Key: "ctrl+s", Command: "execute-commit", Context: "git-commit"},
 		{Key: "ctrl+enter", Command: "execute-commit", Context: "git-commit"},
-		{Key: "esc", Command: "cancel-commit", Context: "git-commit"},
+		{Key: "esc", Command: "cancel", Context: "git-commit"},
 
 		// Git history context
 		{Key: "esc", Command: "close-history", Context: "git-history"},
