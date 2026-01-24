@@ -18,7 +18,7 @@ const (
 	pluginName = "td"
 	pluginIcon = "T"
 
-	pollInterval = 2 * time.Second
+	pollInterval = 5 * time.Second
 )
 
 // Plugin wraps td's monitor TUI as a sidecar plugin.
