@@ -250,7 +250,19 @@ func (b *buttonsSection) resolveStyle(btn ButtonDef, focusID, hoverID string) li
 }
 
 func (b *buttonsSection) Update(msg tea.Msg, focusID string) (string, tea.Cmd) {
-	// Buttons don't handle key input directly - that's handled by the modal
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return "", nil
+	}
+
+	// Enter on a focused button returns that button's ID as the action
+	if keyMsg.String() == "enter" {
+		for _, btn := range b.buttons {
+			if btn.ID == focusID {
+				return btn.ID, nil
+			}
+		}
+	}
 	return "", nil
 }
 
