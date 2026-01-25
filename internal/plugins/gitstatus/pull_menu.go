@@ -11,21 +11,24 @@ import (
 )
 
 const (
-	pullMenuOptionMerge     = "pull-merge"
-	pullMenuOptionRebase    = "pull-rebase"
-	pullMenuOptionFFOnly    = "pull-ff-only"
-	pullMenuOptionAutostash = "pull-autostash"
-	pullMenuActionID        = "pull-menu-action"
+	pullMenuOptionMerge     = "pull-merge"      // List item ID for merge strategy
+	pullMenuOptionRebase    = "pull-rebase"     // List item ID for rebase strategy
+	pullMenuOptionFFOnly    = "pull-ff-only"    // List item ID for fast-forward only
+	pullMenuOptionAutostash = "pull-autostash"  // List item ID for rebase + autostash
+	pullMenuActionID        = "pull-menu-action" // Primary action (Enter key)
+
+	pullMenuModalWidth = 50 // Default modal width
+	pullMenuMinWidth   = 20 // Minimum modal width
 )
 
 // ensurePullModal builds/rebuilds the pull menu modal.
 func (p *Plugin) ensurePullModal() {
-	modalW := 50
+	modalW := pullMenuModalWidth
 	if modalW > p.width-4 {
 		modalW = p.width - 4
 	}
-	if modalW < 20 {
-		modalW = 20
+	if modalW < pullMenuMinWidth {
+		modalW = pullMenuMinWidth
 	}
 
 	// Only rebuild if modal doesn't exist or width changed

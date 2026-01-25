@@ -31,7 +31,7 @@ That's it. The diff pane updates automatically as you move.
 
 ## Core Concepts
 
-### Three-Pane Layout
+### Two-Pane Layout
 
 ```
 ┌─────────────────┬──────────────────────────┐
@@ -48,7 +48,6 @@ That's it. The diff pane updates automatically as you move.
 
 - **Left**: Organized file tree + scrollable commit history
 - **Right**: Live diff preview or commit details
-- **Divider**: Drag to resize (persists across sessions)
 
 ### Auto-Refresh Intelligence
 
@@ -82,24 +81,24 @@ Think of it as "git status + diff + add + commit" fused into a single, live-upda
 
 Files are organized into sections with status indicators:
 
-| Symbol | Status | Meaning |
-|--------|--------|---------|
-| `M` | Modified | File changed |
-| `A` | Added | New file (staged) |
-| `D` | Deleted | File removed |
-| `R` | Renamed | File renamed |
-| `?` | Untracked | New file not tracked |
-| `U` | Unmerged | Merge conflict |
+| Symbol | Status    | Meaning              |
+| ------ | --------- | -------------------- |
+| `M`    | Modified  | File changed         |
+| `A`    | Added     | New file (staged)    |
+| `D`    | Deleted   | File removed         |
+| `R`    | Renamed   | File renamed         |
+| `?`    | Untracked | New file not tracked |
+| `U`    | Unmerged  | Merge conflict       |
 
 Each file shows `+/-` line counts for quick impact assessment.
 
 ## Staging & Unstaging
 
-| Key | Action |
-|-----|--------|
-| `s` | Stage selected file or folder |
-| `u` | Unstage selected file |
-| `S` | Stage all files |
+| Key | Action                              |
+| --- | ----------------------------------- |
+| `s` | Stage selected file or folder       |
+| `u` | Unstage selected file               |
+| `S` | Stage all files                     |
 | `D` | Discard changes (with confirmation) |
 
 Stage entire folders by selecting the folder and pressing `s`. After staging, the cursor automatically moves to the next unstaged file.
@@ -121,6 +120,7 @@ Unlike `git diff` in a terminal or basic GUIs, this plugin provides:
 Press `v` to toggle between:
 
 **Unified** (traditional):
+
 ```diff
   function calculate() {
 -   return x + y;
@@ -129,6 +129,7 @@ Press `v` to toggle between:
 ```
 
 **Side-by-side** (comparative):
+
 ```
 Before               │ After
 ─────────────────────┼──────────────────────
@@ -141,15 +142,15 @@ Your preferred mode persists across sessions.
 
 ### Navigation
 
-| Key | Action |
-|-----|--------|
-| `d` | Open full-screen diff |
-| `v` | Toggle unified / side-by-side |
-| `h`/`l` | Scroll horizontally (wide diffs) |
-| `0` | Reset horizontal scroll |
-| `ctrl+d/u` | Page down/up |
-| `g`/`G` | Jump to top/bottom |
-| `esc`, `q` | Close full-screen diff |
+| Key        | Action                           |
+| ---------- | -------------------------------- |
+| `d`        | Open full-screen diff            |
+| `v`        | Toggle unified / side-by-side    |
+| `h`/`l`    | Scroll horizontally (wide diffs) |
+| `0`        | Reset horizontal scroll          |
+| `ctrl+d/u` | Page down/up                     |
+| `g`/`G`    | Jump to top/bottom               |
+| `esc`, `q` | Close full-screen diff           |
 
 ### Diff Sources
 
@@ -167,12 +168,14 @@ The plugin intelligently shows diffs based on file state:
 Press `c` after staging files to open an intelligent commit interface:
 
 **What you see:**
+
 - Total staged files count
 - Lines added/removed summary (e.g., `+142 -38`)
 - List of all files being committed with paths
 - Multi-line message textarea with focus
 
 **Workflow:**
+
 1. Type your commit message (supports multiple paragraphs)
 2. Press `ctrl+s` to commit immediately
 3. Or press `Tab` to focus the commit button, then `Enter`
@@ -184,11 +187,12 @@ This prevents the frustration of losing commit messages when hooks fail.
 
 ## Branch Management
 
-| Key | Action |
-|-----|--------|
+| Key | Action             |
+| --- | ------------------ |
 | `b` | Open branch picker |
 
 The branch picker shows:
+
 - All local branches
 - Current branch highlighted
 - Upstream tracking info (`↑N ↓N` ahead/behind)
@@ -202,20 +206,24 @@ Select a branch and press Enter to switch.
 Press `P` to open an intelligent push menu with three options:
 
 **1. Push** (`p` shortcut)
+
 - Executes `git push -u origin HEAD`
 - Sets upstream tracking automatically
 - Shows progress indicator
 
 **2. Force Push** (`f` shortcut)
+
 - Uses `--force-with-lease` (safer than `--force`)
 - Prevents overwriting others' work
 - Warns if upstream has changes
 
 **3. Push with Upstream** (`u` shortcut)
+
 - Explicitly sets upstream tracking branch
 - Useful for first push of new branches
 
 **Visual feedback:**
+
 - Push in progress: Animated indicator
 - Push success: Brief confirmation message
 - Push error: Error details with suggested fixes
@@ -232,18 +240,18 @@ This prevents the "Did I push that?" confusion.
 
 ### Pull & Fetch
 
-| Key | Action |
-|-----|--------|
-| `p` | Pull from remote (fetch + merge) |
+| Key | Action                                |
+| --- | ------------------------------------- |
+| `p` | Pull from remote (fetch + merge)      |
 | `f` | Fetch from remote (updates refs only) |
 
 Both operations show progress indicators and error details if they fail.
 
 ## Stash Operations
 
-| Key | Action |
-|-----|--------|
-| `z` | Stash all changes |
+| Key | Action                               |
+| --- | ------------------------------------ |
+| `z` | Stash all changes                    |
 | `Z` | Pop latest stash (with confirmation) |
 
 Pop shows a confirmation modal with stash details before applying.
@@ -289,29 +297,29 @@ This makes code review and investigation fast—no need to `git show` repeatedly
 
 ### Search & Filter
 
-| Key | Action |
-|-----|--------|
+| Key | Action                          |
+| --- | ------------------------------- |
 | `/` | Search commits (subject/author) |
-| `n` | Next search match |
-| `N` | Previous search match |
-| `f` | Filter by author |
-| `p` | Filter by file path |
-| `F` | Clear all filters |
-| `v` | Toggle commit graph |
+| `n` | Next search match               |
+| `N` | Previous search match           |
+| `f` | Filter by author                |
+| `p` | Filter by file path             |
+| `F` | Clear all filters               |
+| `v` | Toggle commit graph             |
 
 ## Clipboard Operations
 
-| Key | Action |
-|-----|--------|
+| Key | Action                  |
+| --- | ----------------------- |
 | `y` | Copy commit as markdown |
-| `Y` | Copy commit hash only |
+| `Y` | Copy commit hash only   |
 
 Markdown format includes subject, hash, author, date, stats, and file list.
 
 ## GitHub Integration
 
-| Key | Action |
-|-----|--------|
+| Key | Action                |
+| --- | --------------------- |
 | `o` | Open commit in GitHub |
 
 Auto-detects repository from remote URL (SSH or HTTPS).
@@ -320,35 +328,35 @@ Auto-detects repository from remote URL (SSH or HTTPS).
 
 ### File Tree
 
-| Key | Action |
-|-----|--------|
-| `j`, `↓` | Move down |
-| `k`, `↑` | Move up |
-| `g` | Jump to top |
-| `G` | Jump to bottom |
-| `enter` | Open file in editor / toggle folder |
-| `O` | Open file in File Browser plugin |
-| `l`, `→` | Focus diff pane |
+| Key      | Action                              |
+| -------- | ----------------------------------- |
+| `j`, `↓` | Move down                           |
+| `k`, `↑` | Move up                             |
+| `g`      | Jump to top                         |
+| `G`      | Jump to bottom                      |
+| `enter`  | Open file in editor / toggle folder |
+| `O`      | Open file in File Browser plugin    |
+| `l`, `→` | Focus diff pane                     |
 
 ### Diff Pane
 
-| Key | Action |
-|-----|--------|
-| `j`, `↓` | Scroll down |
-| `k`, `↑` | Scroll up |
-| `ctrl+d` | Page down |
-| `ctrl+u` | Page up |
-| `g` | Jump to top |
-| `G` | Jump to bottom |
+| Key      | Action                      |
+| -------- | --------------------------- |
+| `j`, `↓` | Scroll down                 |
+| `k`, `↑` | Scroll up                   |
+| `ctrl+d` | Page down                   |
+| `ctrl+u` | Page up                     |
+| `g`      | Jump to top                 |
+| `G`      | Jump to bottom              |
 | `h`, `←` | Focus sidebar / scroll left |
 
 ### General
 
-| Key | Action |
-|-----|--------|
+| Key   | Action                     |
+| ----- | -------------------------- |
 | `tab` | Switch focus between panes |
-| `\` | Toggle sidebar visibility |
-| `r` | Refresh status |
+| `\`   | Toggle sidebar visibility  |
+| `r`   | Refresh status             |
 
 ## Mouse Support
 
@@ -397,73 +405,74 @@ All keyboard shortcuts by context:
 
 ### Files Context (`git-status`)
 
-| Key | Action |
-|-----|--------|
-| `s` | Stage |
-| `u` | Unstage |
-| `S` | Stage all |
-| `d` | Full diff |
-| `D` | Discard |
-| `c` | Commit |
-| `b` | Branch picker |
-| `P` | Push menu |
-| `p` | Pull |
-| `f` | Fetch |
-| `z` | Stash |
-| `Z` | Pop stash |
-| `r` | Refresh |
-| `O` | Open in file browser |
-| `enter` | Open in editor |
+| Key     | Action               |
+| ------- | -------------------- |
+| `s`     | Stage                |
+| `u`     | Unstage              |
+| `S`     | Stage all            |
+| `d`     | Full diff            |
+| `D`     | Discard              |
+| `c`     | Commit               |
+| `b`     | Branch picker        |
+| `P`     | Push menu            |
+| `p`     | Pull                 |
+| `f`     | Fetch                |
+| `z`     | Stash                |
+| `Z`     | Pop stash            |
+| `r`     | Refresh              |
+| `O`     | Open in file browser |
+| `enter` | Open in editor       |
 
 ### Commits Context (`git-status-commits`)
 
-| Key | Action |
-|-----|--------|
-| `/` | Search |
-| `n` | Next match |
-| `N` | Previous match |
+| Key | Action           |
+| --- | ---------------- |
+| `/` | Search           |
+| `n` | Next match       |
+| `N` | Previous match   |
 | `f` | Filter by author |
-| `p` | Filter by path |
-| `F` | Clear filters |
-| `v` | Toggle graph |
-| `y` | Copy markdown |
-| `Y` | Copy hash |
-| `o` | Open in GitHub |
+| `p` | Filter by path   |
+| `F` | Clear filters    |
+| `v` | Toggle graph     |
+| `y` | Copy markdown    |
+| `Y` | Copy hash        |
+| `o` | Open in GitHub   |
 
 ### Diff Context (`git-status-diff`, `git-diff`)
 
-| Key | Action |
-|-----|--------|
-| `v` | Toggle view mode |
-| `h`, `←` | Scroll left |
-| `l`, `→` | Scroll right |
-| `0` | Reset scroll |
-| `O` | Open in file browser |
-| `esc`, `q` | Close |
+| Key        | Action               |
+| ---------- | -------------------- |
+| `v`        | Toggle view mode     |
+| `h`, `←`   | Scroll left          |
+| `l`, `→`   | Scroll right         |
+| `0`        | Reset scroll         |
+| `O`        | Open in file browser |
+| `esc`, `q` | Close                |
 
 ### Commit Modal (`git-commit`)
 
-| Key | Action |
-|-----|--------|
+| Key      | Action         |
+| -------- | -------------- |
 | `ctrl+s` | Execute commit |
-| `tab` | Switch focus |
-| `esc` | Cancel |
+| `tab`    | Switch focus   |
+| `esc`    | Cancel         |
 
 ### Push Menu (`git-push-menu`)
 
-| Key | Action |
-|-----|--------|
-| `p` | Quick push |
-| `f` | Quick force push |
-| `u` | Push with upstream |
-| `enter` | Execute selected |
-| `esc`, `q` | Close |
+| Key        | Action             |
+| ---------- | ------------------ |
+| `p`        | Quick push         |
+| `f`        | Quick force push   |
+| `u`        | Push with upstream |
+| `enter`    | Execute selected   |
+| `esc`, `q` | Close              |
 
 ## Comparison to Alternatives
 
 ### vs. CLI Git
 
 **Traditional workflow:**
+
 ```bash
 $ git status  # See what changed
 $ git diff src/main.go  # Review one file
@@ -474,6 +483,7 @@ $ git commit -m "message"  # Commit
 ```
 
 **This plugin:**
+
 - See all changes at once with live diffs
 - Stage with single keypress, auto-advance to next file
 - Review all diffs before committing
@@ -484,10 +494,12 @@ $ git commit -m "message"  # Commit
 ### vs. VSCode Git
 
 **VSCode strengths:**
+
 - Integrated with editor
 - Good visual diff
 
 **This plugin advantages:**
+
 - **Terminal-native**: No separate window, works in tmux/SSH
 - **Agent visibility**: Real-time updates as agent works
 - **Keyboard efficiency**: No mouse required, Vim-style navigation
@@ -497,10 +509,12 @@ $ git commit -m "message"  # Commit
 ### vs. Git GUIs (GitKraken, Tower, SourceTree)
 
 **GUI tools strengths:**
+
 - Visual branch graphs
 - Clickable interface
 
 **This plugin advantages:**
+
 - **Lightweight**: No multi-GB install, instant startup
 - **Integrated**: Lives in sidecar with other tools
 - **Keyboard-first**: Faster than mouse-driven workflows

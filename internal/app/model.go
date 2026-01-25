@@ -82,10 +82,11 @@ type Model struct {
 	activeContext string
 
 	// UI state
-	width, height   int
+	width, height    int
 	showHelp         bool
 	helpModal        *modal.Modal
 	helpModalWidth   int
+	helpMouseHandler *mouse.Handler
 	showDiagnostics  bool
 	showFooter       bool
 	showPalette      bool

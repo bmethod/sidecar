@@ -1097,6 +1097,7 @@ func (m *Model) ensureHelpModal() {
 func (m *Model) clearHelpModal() {
 	m.helpModal = nil
 	m.helpModalWidth = 0
+	m.helpMouseHandler = nil
 }
 
 // helpGlobalSection renders the global bindings section.
@@ -1137,8 +1138,10 @@ func (m *Model) renderHelpModal(content string) string {
 		return content
 	}
 
-	mouseHandler := mouse.NewHandler()
-	modalContent := m.helpModal.Render(m.width, m.height, mouseHandler)
+	if m.helpMouseHandler == nil {
+		m.helpMouseHandler = mouse.NewHandler()
+	}
+	modalContent := m.helpModal.Render(m.width, m.height, m.helpMouseHandler)
 	return ui.OverlayModal(content, modalContent, m.width, m.height)
 }
 

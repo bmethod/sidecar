@@ -64,7 +64,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.palette, cmd = m.palette.Update(msg)
 			return m, cmd
 		case ModalHelp:
-			return m, nil
+			return m.handleHelpModalMouse(msg)
 		case ModalDiagnostics:
 			if m.hasUpdatesAvailable() && !m.updateInProgress && !m.needsRestart {
 				if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {

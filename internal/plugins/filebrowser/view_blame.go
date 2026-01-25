@@ -11,8 +11,11 @@ import (
 )
 
 const (
-	// blameModalHeaderFooterLines is the vertical space used by header, footer,
-	// and padding in the blame modal (title + spacing + footer hints + margins).
+	// blameModalHeaderFooterLines accounts for:
+	// - Modal title + border (3 lines)
+	// - Footer hints (1 line)
+	// - Modal padding/margins (4 lines)
+	// - Section spacing (2 lines)
 	blameModalHeaderFooterLines = 10
 	// blameMinVisibleLines is the minimum number of blame lines to display.
 	blameMinVisibleLines = 5
@@ -22,9 +25,24 @@ const (
 	// Modal element IDs
 	blameActionID  = "blame-action"  // Primary action (close on Esc)
 	blameContentID = "blame-content" // Content section ID
+
+	// Column widths for blame line rendering
+	blameColumnHash      = 8
+	blameColumnAuthor    = 12
+	blameColumnDate      = 12
+	blameColumnLineNo    = 5
+	blameColumnSeparator = 3 // " | "
+
+	// Age duration thresholds for color coding
+	ageOneDay   = 24 * time.Hour
+	ageOneWeek  = 7 * 24 * time.Hour
+	ageOneMonth = 30 * 24 * time.Hour
+	ageOneYear  = 365 * 24 * time.Hour
 )
 
 // ensureBlameModal builds/rebuilds the blame modal.
+// CRITICAL: Must be called before each key/mouse event to ensure conditional
+// sections evaluate against current state and modal exists for interaction.
 func (p *Plugin) ensureBlameModal() {
 	if p.blameState == nil {
 		return
@@ -125,11 +143,11 @@ func (p *Plugin) blameContentSection(resultsHeight int) modal.Section {
 		}
 
 		// Calculate column widths based on contentWidth
-		hashWidth := 8
-		authorWidth := 12
-		dateWidth := 12
-		lineNoWidth := 5
-		separatorWidth := 3 // " | "
+		hashWidth := blameColumnHash
+		authorWidth := blameColumnAuthor
+		dateWidth := blameColumnDate
+		lineNoWidth := blameColumnLineNo
+		separatorWidth := blameColumnSeparator
 		contentW := contentWidth - hashWidth - authorWidth - dateWidth - lineNoWidth - separatorWidth - 2
 		if contentW < 20 {
 			contentW = 20
@@ -237,17 +255,17 @@ func getBlameAgeColor(commitTime time.Time) lipgloss.Color {
 	age := time.Since(commitTime)
 
 	switch {
-	case age < 24*time.Hour:
+	case age < ageOneDay:
 		return styles.Success
-	case age < 7*24*time.Hour:
+	case age < ageOneWeek:
 		return styles.BlameAge1
-	case age < 30*24*time.Hour:
+	case age < ageOneMonth:
 		return styles.BlameAge2
-	case age < 90*24*time.Hour:
+	case age < 3*ageOneMonth:
 		return styles.BlameAge3
-	case age < 180*24*time.Hour:
+	case age < 6*ageOneMonth:
 		return styles.BlameAge4
-	case age < 365*24*time.Hour:
+	case age < ageOneYear:
 		return styles.BlameAge5
 	default:
 		return styles.TextMuted

@@ -68,7 +68,7 @@ Also see `docs/guides/ui-feature-guide.md` for the modal initialization pattern.
 | Modal | Type | Converted |
 |-------|------|-----------|
 | Quit Confirm | Confirmation | ✓ |
-| Command Palette | Search | ○ |
+| Command Palette | Search | N/A* |
 | Help Modal | Info | ✓ |
 | Diagnostics | Info | ○ |
 | Project Switcher | Selection | ○ |
@@ -85,7 +85,7 @@ Also see `docs/guides/ui-feature-guide.md` for the modal initialization pattern.
 | Create Worktree | Form | ✓ |
 | Task Link | Dropdown | ✓ |
 | Confirm Delete | Confirmation | ○ |
-| Confirm Delete Shell | Confirmation | ✓ |
+| Confirm Delete Shell | Confirmation | ○ |
 | Rename Shell | Form | ✓ |
 | Prompt Picker | Selection | ○ |
 | Agent Choice | Selection | ○ |
@@ -119,8 +119,14 @@ Also see `docs/guides/ui-feature-guide.md` for the modal initialization pattern.
 
 ---
 
+## Notes
+
+**\*Command Palette (N/A):** Intentionally not converted. It's a full Bubble Tea component with complex features (fuzzy search, multi-layer display, match highlighting) that the modal library doesn't support. Already uses `ui.OverlayModal` for backdrop correctly.
+
+---
+
 ## Summary
 
-**Total Modals:** 28
-**Converted:** 13 (46%)
-**Remaining:** 15 (54%)
+**Total Modals:** 27 (excluding N/A)
+**Converted:** 10 (37%)
+**Remaining:** 17 (63%)

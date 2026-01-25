@@ -775,7 +775,8 @@ func (p *Plugin) updatePullMenu(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		return p, nil
 	}
 
-	// Handle keyboard shortcuts
+	// Direct-execution keyboard shortcuts - execute regardless of current selection.
+	// Power users can press p/r/f/a to immediately execute the corresponding action.
 	switch msg.String() {
 	case "p":
 		return p.executePullMenuAction(pullMenuOptionMerge)

@@ -1119,6 +1119,15 @@ func (p *Plugin) openBlameView(path string) (plugin.Plugin, tea.Cmd) {
 	return p, RunGitBlame(p.ctx.WorkDir, path)
 }
 
+// blameVisibleHeight returns the visible height for blame content.
+func (p *Plugin) blameVisibleHeight() int {
+	h := p.height - blameModalHeaderFooterLines
+	if h < blameMinVisibleLines {
+		return blameMinVisibleLines
+	}
+	return h
+}
+
 // handleBlameKey handles key input during blame view mode.
 func (p *Plugin) handleBlameKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	p.ensureBlameModal()
@@ -1142,10 +1151,7 @@ func (p *Plugin) handleBlameKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	}
 
 	// Handle custom navigation keys
-	visibleHeight := p.height - blameModalHeaderFooterLines
-	if visibleHeight < blameMinVisibleLines {
-		visibleHeight = blameMinVisibleLines
-	}
+	visibleHeight := p.blameVisibleHeight()
 
 	switch key {
 	case "q":
@@ -1201,7 +1207,7 @@ func (p *Plugin) handleBlameKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		if len(p.blameState.Lines) > 0 && p.blameState.Cursor < len(p.blameState.Lines) {
 			line := p.blameState.Lines[p.blameState.Cursor]
 			if err := clipboard.WriteAll(line.CommitHash); err != nil {
-				return p, appmsg.ShowToast("Failed to copy hash", 2*time.Second)
+				return p, appmsg.ShowToast(fmt.Sprintf("Copy failed: %v", err), 3*time.Second)
 			}
 			return p, appmsg.ShowToast("Copied: "+line.CommitHash, 2*time.Second)
 		}
