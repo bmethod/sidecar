@@ -259,9 +259,100 @@ func (p *Plugin) renderContent(content string, width int) []string {
 	return wrapText(content, width)
 }
 
+// resetState clears all session/UI state for reinitialization (td-84a1cb).
+// Called from Init() to ensure clean state when switching projects.
+func (p *Plugin) resetState() {
+	// Session list state
+	p.sessions = nil
+	p.cursor = 0
+	p.scrollOff = 0
+
+	// Message view state
+	p.selectedSession = ""
+	p.loadedSession = ""
+	p.messages = nil
+	p.turns = nil
+	p.turnCursor = 0
+	p.turnScrollOff = 0
+	p.msgCursor = 0
+	p.msgScrollOff = 0
+	p.hasMore = false
+
+	// Pagination state
+	p.messageOffset = 0
+	p.totalMessages = 0
+	p.hasOlderMsgs = false
+	p.expandedThinking = make(map[string]bool)
+	p.sessionSummary = nil
+	p.summaryModelCounts = nil
+	p.summaryFileSet = nil
+	p.showToolSummary = false
+	p.turnViewMode = false
+
+	// Message detail view state
+	p.detailMode = false
+	p.detailTurn = nil
+	p.detailScroll = 0
+
+	// Analytics view state
+	p.analyticsScrollOff = 0
+	p.analyticsLines = nil
+
+	// Layout state - reset to defaults but preserve sidebarWidth (persisted)
+	p.activePane = PaneSidebar
+	p.sidebarRestore = PaneSidebar
+	p.sidebarVisible = true
+	p.previewToken = 0
+	p.messageReloadToken = 0
+
+	// Search state
+	p.searchMode = false
+	p.searchQuery = ""
+	p.searchResults = nil
+
+	// Filter state
+	p.filterMode = false
+	p.filters = SearchFilters{}
+	p.filterActive = false
+
+	// Conversation flow view state
+	p.expandedMessages = make(map[string]bool)
+	p.expandedToolResults = make(map[string]bool)
+	p.messageScroll = 0
+	p.messageCursor = 0
+
+	// Line tracking
+	p.visibleMsgRanges = nil
+	p.msgLinePositions = nil
+
+	// Render cache
+	p.renderCache = make(map[renderCacheKey]string)
+	p.hitRegionsDirty = true
+
+	// Refresh throttling
+	p.pendingRefresh = false
+
+	// Worktree cache - invalidate to force fresh discovery
+	p.cachedWorktreePaths = nil
+	p.cachedWorktreeNames = nil
+	p.worktreeCacheTime = time.Time{}
+
+	// Large session warning tracking
+	p.warnedSessions = make(map[string]bool)
+
+	// Recreate coalescer infrastructure (td-84a1cb)
+	// The old coalescer has closed=true and channel is closed after Stop()
+	p.coalesceChanClose = sync.Once{}
+	p.coalesceChan = make(chan CoalescedRefreshMsg, 8)
+	p.coalescer = NewEventCoalescer(0, p.coalesceChan)
+}
+
 // Init initializes the plugin with context.
 func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.ctx = ctx
+
+	// Reset all state for clean reinitialization (td-84a1cb)
+	p.resetState()
 
 	// Load persisted sidebar width
 	if savedWidth := state.GetConversationsSideWidth(); savedWidth > 0 {
@@ -831,9 +922,6 @@ func (p *Plugin) checkLargeSessionWarnings() tea.Cmd {
 		var msg string
 		var isError bool
 		switch level {
-		case 3: // Giant (1GB+)
-			msg = fmt.Sprintf("⚠ Session %s (%.0fMB) - consider archival", s.Slug, sizeMB)
-			isError = true
 		case 2: // Huge (500MB+)
 			msg = fmt.Sprintf("⚠ Session %s (%.0fMB) - auto-reload disabled", s.Slug, sizeMB)
 			isError = true

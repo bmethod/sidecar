@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/adapter"
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 func TestNew(t *testing.T) {
@@ -3320,27 +3321,6 @@ func TestLargeSessionWarning(t *testing.T) {
 		}
 	})
 
-	t.Run("archival warning for giant session", func(t *testing.T) {
-		p := New()
-		p.sessions = []adapter.Session{
-			{ID: "giant", Slug: "giant", FileSize: 1200 * 1024 * 1024}, // 1.2GB
-		}
-
-		cmd := p.checkLargeSessionWarnings()
-		if cmd == nil {
-			t.Fatal("expected warning command")
-		}
-
-		msg := cmd()
-		toast := msg.(app.ToastMsg)
-		if !toast.IsError {
-			t.Error("giant (1GB+) warning should be error")
-		}
-		if !strings.Contains(toast.Message, "archival") {
-			t.Errorf("expected archival message, got: %s", toast.Message)
-		}
-	})
-
 	t.Run("no duplicate warnings", func(t *testing.T) {
 		p := New()
 		p.sessions = []adapter.Session{
@@ -3382,6 +3362,205 @@ func TestLargeSessionWarning(t *testing.T) {
 		cmd2 := p.checkLargeSessionWarnings()
 		if cmd2 != nil {
 			t.Error("expected no warning on second call")
+		}
+	})
+}
+
+// =============================================================================
+// Plugin Reinit Tests (td-84a1cb)
+// =============================================================================
+
+// TestPluginReinitOnProjectSwitch verifies that the conversations plugin properly
+// resets state when switching projects via Stop() + Init() + Start().
+func TestPluginReinitOnProjectSwitch(t *testing.T) {
+	t.Run("state is reset on Init", func(t *testing.T) {
+		p := New()
+
+		// Set up initial state simulating an active session
+		ctx1 := &plugin.Context{
+			WorkDir:  "/project/a",
+			Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+		}
+		if err := p.Init(ctx1); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		// Simulate having loaded sessions and messages
+		p.sessions = []adapter.Session{{ID: "sess-a", Name: "Session A"}}
+		p.selectedSession = "sess-a"
+		p.loadedSession = "sess-a"
+		p.messages = []adapter.Message{{ID: "msg1", Role: "user", Content: "test"}}
+		p.turns = []Turn{{StartIndex: 0, Role: "user"}}
+		p.cursor = 5
+		p.scrollOff = 10
+		p.expandedThinking["msg1"] = true
+		p.expandedMessages["msg1"] = true
+		p.cachedWorktreePaths = []string{"/project/a", "/project/a-feature"}
+		p.cachedWorktreeNames = map[string]string{"/project/a-feature": "feature"}
+		p.cachedWorktreePaths = []string{"/project/a"}
+		p.warnedSessions["sess-a"] = true
+
+		// Stop the plugin (simulating project switch)
+		p.Stop()
+
+		// Reinitialize with new project
+		ctx2 := &plugin.Context{
+			WorkDir:  "/project/b",
+			Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+		}
+		if err := p.Init(ctx2); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		// Verify state was reset
+		if len(p.sessions) != 0 {
+			t.Errorf("sessions not cleared: got %d, want 0", len(p.sessions))
+		}
+		if p.selectedSession != "" {
+			t.Errorf("selectedSession not cleared: got %q", p.selectedSession)
+		}
+		if p.loadedSession != "" {
+			t.Errorf("loadedSession not cleared: got %q", p.loadedSession)
+		}
+		if len(p.messages) != 0 {
+			t.Errorf("messages not cleared: got %d, want 0", len(p.messages))
+		}
+		if len(p.turns) != 0 {
+			t.Errorf("turns not cleared: got %d, want 0", len(p.turns))
+		}
+		if p.cursor != 0 {
+			t.Errorf("cursor not reset: got %d, want 0", p.cursor)
+		}
+		if p.scrollOff != 0 {
+			t.Errorf("scrollOff not reset: got %d, want 0", p.scrollOff)
+		}
+		if len(p.expandedThinking) != 0 {
+			t.Errorf("expandedThinking not cleared: got %d, want 0", len(p.expandedThinking))
+		}
+		if len(p.expandedMessages) != 0 {
+			t.Errorf("expandedMessages not cleared: got %d, want 0", len(p.expandedMessages))
+		}
+		if len(p.warnedSessions) != 0 {
+			t.Errorf("warnedSessions not cleared: got %d, want 0", len(p.warnedSessions))
+		}
+	})
+
+	t.Run("worktree cache is invalidated on Init", func(t *testing.T) {
+		p := New()
+
+		ctx1 := &plugin.Context{
+			WorkDir:  "/project/a",
+			Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+		}
+		if err := p.Init(ctx1); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		// Set cached worktree data from old project
+		p.cachedWorktreePaths = []string{"/project/a", "/project/a-feature"}
+		p.cachedWorktreeNames = map[string]string{"/project/a-feature": "feature"}
+		p.worktreeCacheTime = time.Now()
+
+		p.Stop()
+
+		// Reinitialize
+		ctx2 := &plugin.Context{
+			WorkDir:  "/project/b",
+			Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+		}
+		if err := p.Init(ctx2); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		// Worktree cache should be invalidated
+		if p.cachedWorktreePaths != nil {
+			t.Errorf("cachedWorktreePaths not cleared: got %v", p.cachedWorktreePaths)
+		}
+		if p.cachedWorktreeNames != nil {
+			t.Errorf("cachedWorktreeNames not cleared: got %v", p.cachedWorktreeNames)
+		}
+		if !p.worktreeCacheTime.IsZero() {
+			t.Errorf("worktreeCacheTime not cleared: got %v", p.worktreeCacheTime)
+		}
+	})
+
+	t.Run("coalescer is recreated on Init", func(t *testing.T) {
+		p := New()
+
+		ctx1 := &plugin.Context{
+			WorkDir:  "/project/a",
+			Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+		}
+		if err := p.Init(ctx1); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		// Grab references to old infrastructure
+		oldCoalescer := p.coalescer
+		oldChan := p.coalesceChan
+
+		p.Stop()
+
+		// Reinitialize
+		ctx2 := &plugin.Context{
+			WorkDir:  "/project/b",
+			Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+		}
+		if err := p.Init(ctx2); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		// Coalescer should be recreated (different instance)
+		if p.coalescer == oldCoalescer {
+			t.Error("coalescer was not recreated")
+		}
+		if p.coalesceChan == oldChan {
+			t.Error("coalesceChan was not recreated")
+		}
+
+		// Verify new coalescer is functional by adding an event
+		// (old coalescer had closed=true which would prevent flush)
+		p.coalescer.Add("test-session")
+
+		// Channel should receive the coalesced message after flush
+		// Wait briefly for the timer to fire
+		select {
+		case msg := <-p.coalesceChan:
+			if len(msg.SessionIDs) != 1 || msg.SessionIDs[0] != "test-session" {
+				t.Errorf("unexpected coalesced message: %+v", msg)
+			}
+		case <-time.After(500 * time.Millisecond):
+			t.Error("coalescer did not send message - may still be in closed state")
+		}
+	})
+
+	t.Run("context is updated on Init", func(t *testing.T) {
+		p := New()
+
+		ctx1 := &plugin.Context{
+			WorkDir:  "/project/a",
+			Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+		}
+		if err := p.Init(ctx1); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		if p.ctx.WorkDir != "/project/a" {
+			t.Errorf("WorkDir = %q, want /project/a", p.ctx.WorkDir)
+		}
+
+		p.Stop()
+
+		ctx2 := &plugin.Context{
+			WorkDir:  "/project/b",
+			Adapters: map[string]adapter.Adapter{"mock": &mockAdapter{}},
+		}
+		if err := p.Init(ctx2); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		if p.ctx.WorkDir != "/project/b" {
+			t.Errorf("WorkDir = %q, want /project/b", p.ctx.WorkDir)
 		}
 	})
 }

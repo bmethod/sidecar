@@ -67,9 +67,8 @@ type CapabilitySet map[Capability]bool
 
 // Session file size thresholds for performance warnings
 const (
-	LargeSessionThreshold = 100 * 1024 * 1024  // 100MB - show warning
-	HugeSessionThreshold  = 500 * 1024 * 1024  // 500MB - disable auto-reload
-	GiantSessionThreshold = 1024 * 1024 * 1024 // 1GB - suggest archival
+	LargeSessionThreshold = 100 * 1024 * 1024 // 100MB - show warning
+	HugeSessionThreshold  = 500 * 1024 * 1024 // 500MB - disable auto-reload
 )
 
 // Session represents an AI coding session.
@@ -96,11 +95,9 @@ type Session struct {
 }
 
 // SizeLevel returns the severity level for this session's file size.
-// 0 = normal, 1 = large (100MB+), 2 = huge (500MB+), 3 = giant (1GB+)
+// 0 = normal, 1 = large (100MB+), 2 = huge (500MB+)
 func (s *Session) SizeLevel() int {
 	switch {
-	case s.FileSize >= GiantSessionThreshold:
-		return 3
 	case s.FileSize >= HugeSessionThreshold:
 		return 2
 	case s.FileSize >= LargeSessionThreshold:

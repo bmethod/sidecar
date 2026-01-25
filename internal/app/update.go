@@ -373,7 +373,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Text input contexts: forward all keys to plugin except ctrl+c
 	// This ensures typing works correctly in commit messages, search boxes, etc.
-	if m.activeContext == "git-commit" {
+	if isTextInputContext(m.activeContext) {
 		// ctrl+c shows quit confirmation
 		if msg.String() == "ctrl+c" {
 			if !m.hasModal() {
