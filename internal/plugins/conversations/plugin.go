@@ -197,6 +197,9 @@ type Plugin struct {
 	// Session loading serialization to prevent FD accumulation (td-023577)
 	loadingMu       sync.Mutex // guards loadingSessions
 	loadingSessions bool       // true when loadSessions() goroutine is running
+
+	// Large session warning tracking (td-ee67d8)
+	warnedSessions map[string]bool // session ID -> already warned about size
 }
 
 // msgLineRange tracks which screen lines a message occupies (after scroll).
@@ -233,6 +236,7 @@ func New() *Plugin {
 		hitRegionsDirty:     true, // Start dirty to ensure first render builds regions
 		sidebarVisible:      true, // Sidebar visible by default
 		sidebarRestore:      PaneSidebar,
+		warnedSessions:      make(map[string]bool),
 	}
 	p.coalescer = NewEventCoalescer(0, coalesceChan)
 	return p
@@ -349,6 +353,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case SessionsLoadedMsg:
 		p.sessions = msg.Sessions
+		// Update coalescer with session sizes for dynamic debounce (td-190095)
+		if p.coalescer != nil {
+			p.coalescer.UpdateSessionSizes(msg.Sessions)
+		}
 		// Update worktree cache from message (td-0e43c080: safe update in Update())
 		if msg.WorktreePaths != nil {
 			p.cachedWorktreePaths = msg.WorktreePaths
@@ -373,6 +381,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 		}
 
+		// Check for large session warnings (td-ee67d8)
+		warningCmd := p.checkLargeSessionWarnings()
+
 		// Ensure a selection so the right pane can render.
 		if p.selectedSession == "" && len(p.sessions) > 0 {
 			if p.cursor >= len(p.sessions) {
@@ -382,9 +393,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				p.cursor = 0
 			}
 			p.setSelectedSession(p.sessions[p.cursor].ID)
-			return p, p.schedulePreviewLoad(p.selectedSession)
+			previewCmd := p.schedulePreviewLoad(p.selectedSession)
+			if warningCmd != nil {
+				return p, tea.Batch(previewCmd, warningCmd)
+			}
+			return p, previewCmd
 		}
-		return p, nil
+		return p, warningCmd
 
 	case PreviewLoadMsg:
 		if msg.Token != p.previewToken {
@@ -795,4 +810,46 @@ func TickCmd() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 		return WatchEventMsg{}
 	})
+}
+
+// checkLargeSessionWarnings returns toast warnings for any large sessions not yet warned.
+// Marks sessions as warned to avoid duplicate notifications.
+func (p *Plugin) checkLargeSessionWarnings() tea.Cmd {
+	var cmds []tea.Cmd
+	for i := range p.sessions {
+		s := &p.sessions[i]
+		if s.FileSize < adapter.LargeSessionThreshold {
+			continue
+		}
+		if p.warnedSessions[s.ID] {
+			continue
+		}
+		p.warnedSessions[s.ID] = true
+
+		level := s.SizeLevel()
+		sizeMB := s.SizeMB()
+		var msg string
+		var isError bool
+		switch level {
+		case 3: // Giant (1GB+)
+			msg = fmt.Sprintf("⚠ Session %s (%.0fMB) - consider archival", s.Slug, sizeMB)
+			isError = true
+		case 2: // Huge (500MB+)
+			msg = fmt.Sprintf("⚠ Session %s (%.0fMB) - auto-reload disabled", s.Slug, sizeMB)
+			isError = true
+		case 1: // Large (100MB+)
+			msg = fmt.Sprintf("Session %s (%.0fMB) - may be slow", s.Slug, sizeMB)
+			isError = false
+		}
+		if msg != "" {
+			cmds = append(cmds, func() tea.Msg {
+				return app.ToastMsg{Message: msg, Duration: 4 * time.Second, IsError: isError}
+			})
+		}
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	// Only show one warning at a time to avoid toast spam
+	return cmds[0]
 }

@@ -65,6 +65,13 @@ const (
 // CapabilitySet tracks which features an adapter supports.
 type CapabilitySet map[Capability]bool
 
+// Session file size thresholds for performance warnings
+const (
+	LargeSessionThreshold = 100 * 1024 * 1024  // 100MB - show warning
+	HugeSessionThreshold  = 500 * 1024 * 1024  // 500MB - disable auto-reload
+	GiantSessionThreshold = 1024 * 1024 * 1024 // 1GB - suggest archival
+)
+
 // Session represents an AI coding session.
 type Session struct {
 	ID           string
@@ -81,10 +88,31 @@ type Session struct {
 	EstCost      float64 // Estimated cost in dollars
 	IsSubAgent   bool    // True if this is a sub-agent spawned by another session
 	MessageCount int     // Number of user/assistant messages (0 = metadata-only)
+	FileSize     int64   // Session file size in bytes, for performance-aware behavior
 
 	// Worktree fields - populated when session is from a different worktree
 	WorktreeName string // Branch name or directory name of the worktree (empty if main or non-worktree)
 	WorktreePath string // Absolute path to the worktree (empty if same as current workdir)
+}
+
+// SizeLevel returns the severity level for this session's file size.
+// 0 = normal, 1 = large (100MB+), 2 = huge (500MB+), 3 = giant (1GB+)
+func (s *Session) SizeLevel() int {
+	switch {
+	case s.FileSize >= GiantSessionThreshold:
+		return 3
+	case s.FileSize >= HugeSessionThreshold:
+		return 2
+	case s.FileSize >= LargeSessionThreshold:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// SizeMB returns the session file size in megabytes.
+func (s *Session) SizeMB() float64 {
+	return float64(s.FileSize) / (1024 * 1024)
 }
 
 // ThinkingBlock represents Claude's extended thinking content.

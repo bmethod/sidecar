@@ -204,6 +204,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			TotalTokens:  totalTokens,
 			EstCost:      estCost,
 			MessageCount: exchangeCount,
+			FileSize:     0, // Warp uses shared SQLite DB, size not per-session
 		})
 
 		a.indexMu.Lock()

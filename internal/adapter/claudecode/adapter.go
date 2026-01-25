@@ -14,31 +14,17 @@ import (
 	"time"
 
 	"github.com/marcus/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/adapter/cache"
 )
 
 // xmlTagRegex matches XML/HTML-like tags for stripping from session titles
 var xmlTagRegex = regexp.MustCompile(`<[^>]+>`)
 
-// scannerBufPool recycles buffers for bufio.Scanner to reduce allocations.
-// We use 1MB initial buffer (default is 4KB) to reduce resizing, with 10MB max.
-var scannerBufPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 1024*1024)
-	},
-}
-
-func getScannerBuffer() []byte {
-	return scannerBufPool.Get().([]byte)
-}
-
-func putScannerBuffer(buf []byte) {
-	scannerBufPool.Put(buf)
-}
-
 const (
 	adapterID           = "claude-code"
 	adapterName         = "Claude Code"
 	metaCacheMaxEntries = 2048
+	msgCacheMaxEntries  = 128 // fewer entries since messages are larger
 )
 
 // Adapter implements the adapter.Adapter interface for Claude Code sessions.
@@ -46,8 +32,18 @@ type Adapter struct {
 	projectsDir  string
 	sessionIndex map[string]string // sessionID -> file path cache
 	metaCache    map[string]sessionMetaCacheEntry
-	mu           sync.RWMutex // guards sessionIndex
-	metaMu       sync.RWMutex // guards metaCache
+	msgCache     *cache.Cache[messageCacheEntry] // session path -> cached messages
+	mu           sync.RWMutex                    // guards sessionIndex
+	metaMu       sync.RWMutex                    // guards metaCache
+}
+
+// messageCacheEntry holds cached messages with incremental parsing state.
+type messageCacheEntry struct {
+	messages     []adapter.Message
+	toolUseRefs  map[string]toolUseRef // unresolved tool uses for linking
+	pendingRefs  map[string]toolUseRef // tool uses awaiting results (for incremental)
+	byteOffset   int64                 // resume point for incremental parse
+	messageCount int                   // for validation
 }
 
 // New creates a new Claude Code adapter.
@@ -57,6 +53,7 @@ func New() *Adapter {
 		projectsDir:  filepath.Join(home, ".claude", "projects"),
 		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
+		msgCache:     cache.New[messageCacheEntry](msgCacheMaxEntries),
 	}
 }
 
@@ -167,6 +164,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			EstCost:      meta.EstCost,
 			IsSubAgent:   isSubAgent,
 			MessageCount: meta.MsgCount,
+			FileSize:     info.Size(),
 		})
 	}
 
@@ -232,105 +230,289 @@ func (a *Adapter) SessionByID(sessionID string) (*adapter.Session, error) {
 		EstCost:      meta.EstCost,
 		IsSubAgent:   isSubAgent,
 		MessageCount: meta.MsgCount,
+		FileSize:     info.Size(),
 	}, nil
 }
 
 // Messages returns all messages for the given session.
+// Uses caching with incremental parsing for append-only growth optimization.
 func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 	path := a.sessionFilePath(sessionID)
 	if path == "" {
 		return nil, nil
 	}
 
-	file, err := os.Open(path)
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Check cache for existing entry (if cache is initialized)
+	if a.msgCache != nil {
+		cached, offset, cachedSize, cachedModTime, ok := a.msgCache.GetWithOffset(path)
+		if ok {
+			// Exact cache hit: file unchanged
+			if info.Size() == cachedSize && info.ModTime().Equal(cachedModTime) {
+				// Return a copy to avoid mutation
+				return copyMessages(cached.messages), nil
+			}
+
+			// File grew: incremental parse from saved offset
+			if info.Size() > cachedSize && offset > 0 {
+				messages, entry, err := a.parseMessagesIncremental(path, cached, offset, info)
+				if err == nil {
+					a.msgCache.Set(path, entry, info.Size(), info.ModTime(), entry.byteOffset)
+					return messages, nil
+				}
+				// Fall through to full parse on error
+			}
+			// File shrank or other change: full re-parse
+		}
+	}
+
+	// Full parse
+	messages, entry, err := a.parseMessagesFull(path, info)
 	if err != nil {
 		return nil, err
+	}
+
+	if a.msgCache != nil {
+		a.msgCache.Set(path, entry, info.Size(), info.ModTime(), entry.byteOffset)
+	}
+	return messages, nil
+}
+
+// parseMessagesFull parses all messages from a session file.
+func (a *Adapter) parseMessagesFull(path string, info os.FileInfo) ([]adapter.Message, messageCacheEntry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, messageCacheEntry{}, err
 	}
 	defer file.Close()
 
 	var messages []adapter.Message
-	// Track tool use locations for deferred result linking: toolUseID -> (message index, tool use index, content block index)
 	toolUseRefs := make(map[string]toolUseRef)
+	pendingRefs := make(map[string]toolUseRef)
+	var bytesRead int64
 
 	scanner := bufio.NewScanner(file)
-	buf := getScannerBuffer()
-	defer putScannerBuffer(buf)
+	buf := cache.GetScannerBuffer()
+	defer cache.PutScannerBuffer(buf)
 	scanner.Buffer(buf, 10*1024*1024)
 
 	for scanner.Scan() {
-		var raw RawMessage
-		if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {
+		line := scanner.Bytes()
+		bytesRead += int64(len(line)) + 1 // +1 for newline
+
+		msg, msgType, ok := a.parseMessageLine(line)
+		if !ok {
 			continue
-		}
-
-		// Skip non-message types
-		if raw.Type != "user" && raw.Type != "assistant" {
-			continue
-		}
-		if raw.Message == nil {
-			continue
-		}
-
-		msg := adapter.Message{
-			ID:        raw.UUID,
-			Role:      raw.Message.Role,
-			Timestamp: raw.Timestamp,
-			Model:     raw.Message.Model,
-		}
-
-		// Parse content (no tool results linking yet)
-		content, toolUses, thinkingBlocks, contentBlocks := a.parseContentWithResults(raw.Message.Content, nil)
-		msg.Content = content
-		msg.ToolUses = toolUses
-		msg.ThinkingBlocks = thinkingBlocks
-		msg.ContentBlocks = contentBlocks
-
-		// Parse usage
-		if raw.Message.Usage != nil {
-			msg.TokenUsage = adapter.TokenUsage{
-				InputTokens:  raw.Message.Usage.InputTokens,
-				OutputTokens: raw.Message.Usage.OutputTokens,
-				CacheRead:    raw.Message.Usage.CacheReadInputTokens,
-				CacheWrite:   raw.Message.Usage.CacheCreationInputTokens,
-			}
 		}
 
 		msgIdx := len(messages)
 		messages = append(messages, msg)
 
-		// For assistant messages, track tool use references for later linking
-		if raw.Type == "assistant" {
-			for toolIdx, tu := range messages[msgIdx].ToolUses {
-				if tu.ID != "" {
-					toolUseRefs[tu.ID] = toolUseRef{msgIdx: msgIdx, toolIdx: toolIdx, contentIdx: -1}
-				}
-			}
-			// Also track in content blocks
-			for contentIdx, cb := range messages[msgIdx].ContentBlocks {
-				if cb.Type == "tool_use" && cb.ToolUseID != "" {
-					if ref, ok := toolUseRefs[cb.ToolUseID]; ok {
-						ref.contentIdx = contentIdx
-						toolUseRefs[cb.ToolUseID] = ref
-					}
-				}
-			}
+		// Track tool use references for assistant messages
+		if msgType == "assistant" {
+			a.trackToolUseRefs(messages, msgIdx, toolUseRefs, pendingRefs)
 		}
 
-		// For user messages, link tool results to previously seen tool uses
-		if raw.Type == "user" {
-			a.linkToolResults(raw.Message.Content, messages, toolUseRefs)
+		// Link tool results for user messages
+		if msgType == "user" {
+			var raw RawMessage
+			if json.Unmarshal(line, &raw) == nil && raw.Message != nil {
+				a.linkToolResults(raw.Message.Content, messages, toolUseRefs)
+				// Clear resolved refs from pending
+				a.clearResolvedRefs(raw.Message.Content, pendingRefs)
+			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return messages, err
+		return messages, messageCacheEntry{}, err
 	}
 
-	if info, err := file.Stat(); err == nil {
-		a.invalidateSessionMetaCacheIfChanged(path, info)
+	entry := messageCacheEntry{
+		messages:     copyMessages(messages),
+		toolUseRefs:  toolUseRefs,
+		pendingRefs:  pendingRefs,
+		byteOffset:   bytesRead,
+		messageCount: len(messages),
 	}
 
-	return messages, nil
+	a.invalidateSessionMetaCacheIfChanged(path, info)
+	return messages, entry, nil
+}
+
+// parseMessagesIncremental resumes parsing from a byte offset.
+func (a *Adapter) parseMessagesIncremental(path string, cached messageCacheEntry, startOffset int64, info os.FileInfo) ([]adapter.Message, messageCacheEntry, error) {
+	reader, err := cache.NewIncrementalReader(path, startOffset)
+	if err != nil {
+		return nil, messageCacheEntry{}, err
+	}
+	defer reader.Close()
+
+	// Start with copies of cached data
+	messages := copyMessages(cached.messages)
+	toolUseRefs := copyToolUseRefs(cached.toolUseRefs)
+	pendingRefs := copyToolUseRefs(cached.pendingRefs)
+
+	for {
+		line, err := reader.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, messageCacheEntry{}, err
+		}
+
+		msg, msgType, ok := a.parseMessageLine(line)
+		if !ok {
+			continue
+		}
+
+		msgIdx := len(messages)
+		messages = append(messages, msg)
+
+		if msgType == "assistant" {
+			a.trackToolUseRefs(messages, msgIdx, toolUseRefs, pendingRefs)
+		}
+
+		if msgType == "user" {
+			var raw RawMessage
+			if json.Unmarshal(line, &raw) == nil && raw.Message != nil {
+				a.linkToolResults(raw.Message.Content, messages, toolUseRefs)
+				a.clearResolvedRefs(raw.Message.Content, pendingRefs)
+			}
+		}
+	}
+
+	entry := messageCacheEntry{
+		messages:     copyMessages(messages),
+		toolUseRefs:  toolUseRefs,
+		pendingRefs:  pendingRefs,
+		byteOffset:   reader.Offset(),
+		messageCount: len(messages),
+	}
+
+	a.invalidateSessionMetaCacheIfChanged(path, info)
+	return messages, entry, nil
+}
+
+// parseMessageLine parses a single JSONL line into a Message.
+// Returns (message, type, ok) where ok is false if line should be skipped.
+func (a *Adapter) parseMessageLine(line []byte) (adapter.Message, string, bool) {
+	var raw RawMessage
+	if err := json.Unmarshal(line, &raw); err != nil {
+		return adapter.Message{}, "", false
+	}
+
+	if raw.Type != "user" && raw.Type != "assistant" {
+		return adapter.Message{}, "", false
+	}
+	if raw.Message == nil {
+		return adapter.Message{}, "", false
+	}
+
+	msg := adapter.Message{
+		ID:        raw.UUID,
+		Role:      raw.Message.Role,
+		Timestamp: raw.Timestamp,
+		Model:     raw.Message.Model,
+	}
+
+	content, toolUses, thinkingBlocks, contentBlocks := a.parseContentWithResults(raw.Message.Content, nil)
+	msg.Content = content
+	msg.ToolUses = toolUses
+	msg.ThinkingBlocks = thinkingBlocks
+	msg.ContentBlocks = contentBlocks
+
+	if raw.Message.Usage != nil {
+		msg.TokenUsage = adapter.TokenUsage{
+			InputTokens:  raw.Message.Usage.InputTokens,
+			OutputTokens: raw.Message.Usage.OutputTokens,
+			CacheRead:    raw.Message.Usage.CacheReadInputTokens,
+			CacheWrite:   raw.Message.Usage.CacheCreationInputTokens,
+		}
+	}
+
+	return msg, raw.Type, true
+}
+
+// trackToolUseRefs tracks tool use references in an assistant message for later linking.
+func (a *Adapter) trackToolUseRefs(messages []adapter.Message, msgIdx int, toolUseRefs, pendingRefs map[string]toolUseRef) {
+	for toolIdx, tu := range messages[msgIdx].ToolUses {
+		if tu.ID != "" {
+			ref := toolUseRef{msgIdx: msgIdx, toolIdx: toolIdx, contentIdx: -1}
+			toolUseRefs[tu.ID] = ref
+			pendingRefs[tu.ID] = ref // Track as pending until result arrives
+		}
+	}
+	for contentIdx, cb := range messages[msgIdx].ContentBlocks {
+		if cb.Type == "tool_use" && cb.ToolUseID != "" {
+			if ref, ok := toolUseRefs[cb.ToolUseID]; ok {
+				ref.contentIdx = contentIdx
+				toolUseRefs[cb.ToolUseID] = ref
+				pendingRefs[cb.ToolUseID] = ref
+			}
+		}
+	}
+}
+
+// clearResolvedRefs removes tool use refs that have been resolved by tool results.
+func (a *Adapter) clearResolvedRefs(rawContent json.RawMessage, pendingRefs map[string]toolUseRef) {
+	if len(rawContent) == 0 {
+		return
+	}
+	var blocks []ContentBlock
+	if err := json.Unmarshal(rawContent, &blocks); err != nil {
+		return
+	}
+	for _, block := range blocks {
+		if block.Type == "tool_result" && block.ToolUseID != "" {
+			delete(pendingRefs, block.ToolUseID)
+		}
+	}
+}
+
+// copyMessages creates a deep copy of messages slice.
+func copyMessages(msgs []adapter.Message) []adapter.Message {
+	if msgs == nil {
+		return nil
+	}
+	cp := make([]adapter.Message, len(msgs))
+	for i, m := range msgs {
+		cp[i] = m
+		// Deep copy slices
+		if m.ToolUses != nil {
+			cp[i].ToolUses = make([]adapter.ToolUse, len(m.ToolUses))
+			copy(cp[i].ToolUses, m.ToolUses)
+		}
+		if m.ThinkingBlocks != nil {
+			cp[i].ThinkingBlocks = make([]adapter.ThinkingBlock, len(m.ThinkingBlocks))
+			copy(cp[i].ThinkingBlocks, m.ThinkingBlocks)
+		}
+		if m.ContentBlocks != nil {
+			cp[i].ContentBlocks = make([]adapter.ContentBlock, len(m.ContentBlocks))
+			copy(cp[i].ContentBlocks, m.ContentBlocks)
+		}
+	}
+	return cp
+}
+
+// copyToolUseRefs creates a copy of tool use refs map.
+func copyToolUseRefs(refs map[string]toolUseRef) map[string]toolUseRef {
+	if refs == nil {
+		return make(map[string]toolUseRef)
+	}
+	cp := make(map[string]toolUseRef, len(refs))
+	for k, v := range refs {
+		cp[k] = v
+	}
+	return cp
 }
 
 // linkToolResults extracts tool_result blocks and links them to previously seen tool_use blocks.
@@ -531,8 +713,8 @@ func (a *Adapter) parseSessionMetadataFull(path string) (*SessionMetadata, int64
 	}
 
 	scanner := bufio.NewScanner(file)
-	buf := getScannerBuffer()
-	defer putScannerBuffer(buf)
+	buf := cache.GetScannerBuffer()
+	defer cache.PutScannerBuffer(buf)
 	scanner.Buffer(buf, 10*1024*1024)
 
 	modelCounts := make(map[string]int)
@@ -595,8 +777,8 @@ func (a *Adapter) parseSessionMetadataIncremental(path string, base *SessionMeta
 	}
 
 	scanner := bufio.NewScanner(file)
-	buf := getScannerBuffer()
-	defer putScannerBuffer(buf)
+	buf := cache.GetScannerBuffer()
+	defer cache.PutScannerBuffer(buf)
 	scanner.Buffer(buf, 10*1024*1024)
 
 	bytesRead := offset

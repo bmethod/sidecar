@@ -3,16 +3,24 @@ package conversations
 import (
 	"sync"
 	"time"
+
+	"github.com/marcus/sidecar/internal/adapter"
 )
 
 const (
 	defaultCoalesceWindow = 250 * time.Millisecond
+	maxCoalesceWindow     = 5 * time.Second
 	maxPendingSessionIDs  = 10 // Above this, trigger full refresh
+
+	// sizeScaleFactor determines how much each 100MB adds to the debounce window
+	sizeScaleFactor = 100 * 1024 * 1024 // 100MB
+	sizeScaleAmount = 500 * time.Millisecond
 )
 
 // EventCoalescer batches rapid watch events into single refreshes.
 // When events arrive faster than the coalesce window, they are
 // accumulated and a single refresh is triggered after the window closes.
+// td-190095: Uses dynamic window based on largest pending session's size.
 type EventCoalescer struct {
 	mu             sync.Mutex
 	pendingIDs     map[string]struct{} // SessionIDs to refresh
@@ -21,6 +29,10 @@ type EventCoalescer struct {
 	coalesceWindow time.Duration
 	msgChan        chan<- CoalescedRefreshMsg // channel to send messages
 	closed         bool                       // true after Stop() called, prevents send on closed channel
+
+	// Session size tracking for dynamic debounce (td-190095)
+	sessionSizes map[string]int64
+	sizeMu       sync.RWMutex
 }
 
 // NewEventCoalescer creates a coalescer with the given window duration.
@@ -31,13 +43,14 @@ func NewEventCoalescer(window time.Duration, msgChan chan<- CoalescedRefreshMsg)
 	}
 	return &EventCoalescer{
 		pendingIDs:     make(map[string]struct{}),
+		sessionSizes:   make(map[string]int64),
 		coalesceWindow: window,
 		msgChan:        msgChan,
 	}
 }
 
 // Add queues a sessionID for refresh. Empty string triggers full refresh.
-// Resets the coalesce timer on each call.
+// Uses dynamic window based on largest pending session (td-190095).
 func (c *EventCoalescer) Add(sessionID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -45,14 +58,80 @@ func (c *EventCoalescer) Add(sessionID string) {
 	if sessionID == "" {
 		c.refreshAll = true
 	} else {
+		// Skip auto-reload for huge sessions (td-190095)
+		if !c.shouldAutoReloadLocked(sessionID) {
+			return
+		}
 		c.pendingIDs[sessionID] = struct{}{}
 	}
+
+	// Compute dynamic window based on largest pending session
+	window := c.maxWindowForPendingLocked()
 
 	// Reset timer - we wait for a quiet period
 	if c.timer != nil {
 		c.timer.Stop()
 	}
-	c.timer = time.AfterFunc(c.coalesceWindow, c.flush)
+	c.timer = time.AfterFunc(window, c.flush)
+}
+
+// UpdateSessionSize records the file size for a session (td-190095).
+// Call this after loading sessions to enable dynamic debounce.
+func (c *EventCoalescer) UpdateSessionSize(sessionID string, size int64) {
+	c.sizeMu.Lock()
+	c.sessionSizes[sessionID] = size
+	c.sizeMu.Unlock()
+}
+
+// UpdateSessionSizes updates sizes for multiple sessions at once.
+func (c *EventCoalescer) UpdateSessionSizes(sessions []adapter.Session) {
+	c.sizeMu.Lock()
+	for i := range sessions {
+		c.sessionSizes[sessions[i].ID] = sessions[i].FileSize
+	}
+	c.sizeMu.Unlock()
+}
+
+// ShouldAutoReload returns whether auto-reload is enabled for a session.
+// Sessions larger than HugeSessionThreshold (500MB) disable auto-reload.
+func (c *EventCoalescer) ShouldAutoReload(sessionID string) bool {
+	c.sizeMu.RLock()
+	defer c.sizeMu.RUnlock()
+	return c.shouldAutoReloadLocked(sessionID)
+}
+
+// shouldAutoReloadLocked requires sizeMu NOT held (acquires read lock).
+func (c *EventCoalescer) shouldAutoReloadLocked(sessionID string) bool {
+	c.sizeMu.RLock()
+	size := c.sessionSizes[sessionID]
+	c.sizeMu.RUnlock()
+	return size < adapter.HugeSessionThreshold
+}
+
+// maxWindowForPendingLocked computes the max window across all pending sessions.
+// Returns base window if no size info available.
+func (c *EventCoalescer) maxWindowForPendingLocked() time.Duration {
+	c.sizeMu.RLock()
+	defer c.sizeMu.RUnlock()
+
+	maxWindow := c.coalesceWindow
+	for id := range c.pendingIDs {
+		size := c.sessionSizes[id]
+		if size == 0 {
+			continue
+		}
+		// Scale: base + 500ms per 100MB
+		scale := time.Duration(size/sizeScaleFactor) * sizeScaleAmount
+		window := c.coalesceWindow + scale
+		if window > maxWindow {
+			maxWindow = window
+		}
+	}
+
+	if maxWindow > maxCoalesceWindow {
+		return maxCoalesceWindow
+	}
+	return maxWindow
 }
 
 // flush sends the coalesced refresh message and resets state.

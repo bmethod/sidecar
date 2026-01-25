@@ -194,6 +194,12 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			name = shortID(meta.AgentID)
 		}
 
+		// Calculate file size (db + wal)
+		fileSize := int64(0)
+		if info != nil {
+			fileSize = info.Size() + walSize
+		}
+
 		sessions = append(sessions, adapter.Session{
 			ID:           meta.AgentID,
 			Name:         name,
@@ -209,6 +215,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			EstCost:      0,
 			IsSubAgent:   false,
 			MessageCount: msgCount,
+			FileSize:     fileSize,
 		})
 	}
 

@@ -831,3 +831,197 @@ func TestSessionByIDImplementsTargetedRefresher(t *testing.T) {
 	var a adapter.TargetedRefresher = New()
 	_ = a
 }
+
+func TestMessagesCaching_CacheHit(t *testing.T) {
+	tmpDir := t.TempDir()
+	projDir := tmpDir + "/-tmp-project"
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionData := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","uuid":"msg1","message":{"role":"user","content":"hello"}}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","uuid":"msg2","message":{"role":"assistant","content":"hi","model":"claude-sonnet-4-20250514"}}
+`
+	sessionID := "cache-test-001"
+	sessionPath := projDir + "/" + sessionID + ".jsonl"
+	if err := os.WriteFile(sessionPath, []byte(sessionData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.projectsDir = tmpDir
+	a.sessionIndex = map[string]string{sessionID: sessionPath}
+
+	// First call: populates cache
+	msgs1, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatalf("first Messages call: %v", err)
+	}
+	if len(msgs1) != 2 {
+		t.Errorf("expected 2 msgs, got %d", len(msgs1))
+	}
+
+	// Second call: should hit cache (file unchanged)
+	msgs2, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatalf("second Messages call: %v", err)
+	}
+	if len(msgs2) != 2 {
+		t.Errorf("cache hit should return 2 msgs, got %d", len(msgs2))
+	}
+
+	// Verify message content
+	if msgs2[0].ID != "msg1" || msgs2[1].ID != "msg2" {
+		t.Error("message IDs don't match")
+	}
+}
+
+func TestMessagesCaching_IncrementalParse(t *testing.T) {
+	tmpDir := t.TempDir()
+	projDir := tmpDir + "/-tmp-project"
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	initial := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","uuid":"msg1","message":{"role":"user","content":"hello"}}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","uuid":"msg2","message":{"role":"assistant","content":"hi"}}
+`
+	sessionID := "incr-test-001"
+	sessionPath := projDir + "/" + sessionID + ".jsonl"
+	if err := os.WriteFile(sessionPath, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.projectsDir = tmpDir
+	a.sessionIndex = map[string]string{sessionID: sessionPath}
+
+	// First call: full parse
+	msgs1, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs1) != 2 {
+		t.Errorf("expected 2 msgs, got %d", len(msgs1))
+	}
+
+	// Append new message
+	f, _ := os.OpenFile(sessionPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	f.WriteString(`{"type":"user","timestamp":"2024-01-01T10:02:00Z","uuid":"msg3","message":{"role":"user","content":"more"}}` + "\n")
+	f.Close()
+
+	// Second call: incremental parse
+	msgs2, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs2) != 3 {
+		t.Errorf("expected 3 msgs after append, got %d", len(msgs2))
+	}
+	if msgs2[2].ID != "msg3" {
+		t.Errorf("new message ID should be msg3, got %s", msgs2[2].ID)
+	}
+}
+
+func TestMessagesCaching_FileShrink(t *testing.T) {
+	tmpDir := t.TempDir()
+	projDir := tmpDir + "/-tmp-project"
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	initial := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","uuid":"msg1","message":{"role":"user","content":"hello"}}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","uuid":"msg2","message":{"role":"assistant","content":"hi"}}
+{"type":"user","timestamp":"2024-01-01T10:02:00Z","uuid":"msg3","message":{"role":"user","content":"more"}}
+`
+	sessionID := "shrink-test-001"
+	sessionPath := projDir + "/" + sessionID + ".jsonl"
+	if err := os.WriteFile(sessionPath, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.projectsDir = tmpDir
+	a.sessionIndex = map[string]string{sessionID: sessionPath}
+
+	// First call: cache 3 messages
+	msgs1, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs1) != 3 {
+		t.Errorf("expected 3 msgs, got %d", len(msgs1))
+	}
+
+	// Shrink file (remove last message)
+	shorter := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","uuid":"msg1","message":{"role":"user","content":"hello"}}
+`
+	if err := os.WriteFile(sessionPath, []byte(shorter), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second call: should do full re-parse
+	msgs2, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs2) != 1 {
+		t.Errorf("expected 1 msg after shrink, got %d", len(msgs2))
+	}
+}
+
+func TestMessagesCaching_ToolLinkingAcrossBoundary(t *testing.T) {
+	tmpDir := t.TempDir()
+	projDir := tmpDir + "/-tmp-project"
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Initial: assistant message with tool use, no result yet
+	initial := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","uuid":"msg1","message":{"role":"user","content":"run a test"}}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","uuid":"msg2","message":{"role":"assistant","content":[{"type":"text","text":"Running test"},{"type":"tool_use","id":"tool-123","name":"Bash","input":{"command":"echo hello"}}]}}
+`
+	sessionID := "tool-link-test"
+	sessionPath := projDir + "/" + sessionID + ".jsonl"
+	if err := os.WriteFile(sessionPath, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.projectsDir = tmpDir
+	a.sessionIndex = map[string]string{sessionID: sessionPath}
+
+	// First call: tool use without result
+	msgs1, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs1) != 2 {
+		t.Fatalf("expected 2 msgs, got %d", len(msgs1))
+	}
+	if len(msgs1[1].ToolUses) != 1 {
+		t.Fatalf("expected 1 tool use, got %d", len(msgs1[1].ToolUses))
+	}
+	if msgs1[1].ToolUses[0].Output != "" {
+		t.Error("tool use should have no output yet")
+	}
+
+	// Append user message with tool result
+	f, _ := os.OpenFile(sessionPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	f.WriteString(`{"type":"user","timestamp":"2024-01-01T10:02:00Z","uuid":"msg3","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-123","content":"hello\n"}]}}` + "\n")
+	f.Close()
+
+	// Second call: incremental parse should link the result
+	msgs2, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs2) != 3 {
+		t.Fatalf("expected 3 msgs, got %d", len(msgs2))
+	}
+
+	// Tool use in cached message should now have output linked
+	if msgs2[1].ToolUses[0].Output != "hello\n" {
+		t.Errorf("tool use output not linked, got: %q", msgs2[1].ToolUses[0].Output)
+	}
+}

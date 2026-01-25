@@ -163,6 +163,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			EstCost:      meta.EstCost,
 			IsSubAgent:   meta.ParentID != "",
 			MessageCount: meta.MsgCount,
+			FileSize:     info.Size(), // Session metadata file size (OpenCode uses separate message files)
 		})
 	}
 

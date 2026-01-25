@@ -3254,3 +3254,134 @@ func TestUnfocusedRefreshThrottle(t *testing.T) {
 		}
 	})
 }
+
+// TestLargeSessionWarning tests td-ee67d8: large session detection and warnings.
+func TestLargeSessionWarning(t *testing.T) {
+	t.Run("no warning for small sessions", func(t *testing.T) {
+		p := New()
+		p.sessions = []adapter.Session{
+			{ID: "small", Slug: "small", FileSize: 50 * 1024 * 1024}, // 50MB
+		}
+
+		cmd := p.checkLargeSessionWarnings()
+		if cmd != nil {
+			t.Error("expected no warning for session under threshold")
+		}
+	})
+
+	t.Run("warning for large session", func(t *testing.T) {
+		p := New()
+		p.sessions = []adapter.Session{
+			{ID: "large", Slug: "large", FileSize: 150 * 1024 * 1024}, // 150MB
+		}
+
+		cmd := p.checkLargeSessionWarnings()
+		if cmd == nil {
+			t.Fatal("expected warning command for large session")
+		}
+
+		// Execute and check message
+		msg := cmd()
+		toast, ok := msg.(app.ToastMsg)
+		if !ok {
+			t.Fatalf("expected ToastMsg, got %T", msg)
+		}
+		if !strings.Contains(toast.Message, "large") {
+			t.Errorf("expected slug in message, got: %s", toast.Message)
+		}
+		if toast.IsError {
+			t.Error("large (100MB) warning should not be error")
+		}
+
+		// Should be marked as warned
+		if !p.warnedSessions["large"] {
+			t.Error("session should be marked as warned")
+		}
+	})
+
+	t.Run("error warning for huge session", func(t *testing.T) {
+		p := New()
+		p.sessions = []adapter.Session{
+			{ID: "huge", Slug: "huge", FileSize: 600 * 1024 * 1024}, // 600MB
+		}
+
+		cmd := p.checkLargeSessionWarnings()
+		if cmd == nil {
+			t.Fatal("expected warning command")
+		}
+
+		msg := cmd()
+		toast := msg.(app.ToastMsg)
+		if !toast.IsError {
+			t.Error("huge (500MB+) warning should be error")
+		}
+		if !strings.Contains(toast.Message, "auto-reload disabled") {
+			t.Errorf("expected auto-reload message, got: %s", toast.Message)
+		}
+	})
+
+	t.Run("archival warning for giant session", func(t *testing.T) {
+		p := New()
+		p.sessions = []adapter.Session{
+			{ID: "giant", Slug: "giant", FileSize: 1200 * 1024 * 1024}, // 1.2GB
+		}
+
+		cmd := p.checkLargeSessionWarnings()
+		if cmd == nil {
+			t.Fatal("expected warning command")
+		}
+
+		msg := cmd()
+		toast := msg.(app.ToastMsg)
+		if !toast.IsError {
+			t.Error("giant (1GB+) warning should be error")
+		}
+		if !strings.Contains(toast.Message, "archival") {
+			t.Errorf("expected archival message, got: %s", toast.Message)
+		}
+	})
+
+	t.Run("no duplicate warnings", func(t *testing.T) {
+		p := New()
+		p.sessions = []adapter.Session{
+			{ID: "large", Slug: "large", FileSize: 150 * 1024 * 1024},
+		}
+
+		// First call should warn
+		cmd1 := p.checkLargeSessionWarnings()
+		if cmd1 == nil {
+			t.Fatal("expected first warning")
+		}
+
+		// Second call should not warn (already warned)
+		cmd2 := p.checkLargeSessionWarnings()
+		if cmd2 != nil {
+			t.Error("expected no duplicate warning")
+		}
+	})
+
+	t.Run("only one warning at a time", func(t *testing.T) {
+		p := New()
+		p.sessions = []adapter.Session{
+			{ID: "large1", Slug: "large1", FileSize: 150 * 1024 * 1024},
+			{ID: "large2", Slug: "large2", FileSize: 200 * 1024 * 1024},
+		}
+
+		// Should return only one command (first warning) even with multiple large sessions
+		cmd := p.checkLargeSessionWarnings()
+		if cmd == nil {
+			t.Fatal("expected warning command")
+		}
+
+		// All sessions are marked warned after first call to avoid spam
+		if !p.warnedSessions["large1"] || !p.warnedSessions["large2"] {
+			t.Error("expected both sessions marked as warned")
+		}
+
+		// Second call returns nil - all already warned
+		cmd2 := p.checkLargeSessionWarnings()
+		if cmd2 != nil {
+			t.Error("expected no warning on second call")
+		}
+	})
+}

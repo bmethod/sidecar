@@ -322,3 +322,148 @@ func TestSessionMetadataTailOnlyOnGrowth(t *testing.T) {
 		t.Errorf("expected 300 tokens from tail update, got %d", meta2.TotalTokens)
 	}
 }
+
+func TestMessagesCaching_CacheHit(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionID := "cache-test-001"
+	sessionPath := filepath.Join(tmpDir, sessionID+".jsonl")
+
+	sessionData := `{"type":"session_meta","timestamp":"2024-01-01T10:00:00Z","payload":{"id":"cache-test-001","cwd":"/tmp"}}
+{"type":"response_item","timestamp":"2024-01-01T10:01:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}}
+{"type":"response_item","timestamp":"2024-01-01T10:02:00Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}
+`
+	if err := os.WriteFile(sessionPath, []byte(sessionData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.sessionsDir = tmpDir
+	a.sessionIndex = map[string]string{sessionID: sessionPath}
+
+	// First call: populates cache
+	msgs1, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatalf("first Messages call: %v", err)
+	}
+	if len(msgs1) != 2 {
+		t.Errorf("expected 2 msgs, got %d", len(msgs1))
+	}
+
+	// Second call: should hit cache (file unchanged)
+	msgs2, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatalf("second Messages call: %v", err)
+	}
+	if len(msgs2) != 2 {
+		t.Errorf("cache hit should return 2 msgs, got %d", len(msgs2))
+	}
+
+	// Verify message content
+	if msgs2[0].Role != "user" || msgs2[1].Role != "assistant" {
+		t.Error("message roles don't match")
+	}
+}
+
+func TestMessagesCaching_IncrementalParse(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionID := "incr-test-001"
+	sessionPath := filepath.Join(tmpDir, sessionID+".jsonl")
+
+	initial := `{"type":"session_meta","timestamp":"2024-01-01T10:00:00Z","payload":{"id":"incr-test-001","cwd":"/tmp"}}
+{"type":"response_item","timestamp":"2024-01-01T10:01:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}}
+{"type":"response_item","timestamp":"2024-01-01T10:02:00Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}
+`
+	if err := os.WriteFile(sessionPath, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.sessionsDir = tmpDir
+	a.sessionIndex = map[string]string{sessionID: sessionPath}
+
+	// First call: full parse
+	msgs1, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs1) != 2 {
+		t.Errorf("expected 2 msgs, got %d", len(msgs1))
+	}
+
+	// Append new message
+	f, _ := os.OpenFile(sessionPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	f.WriteString(`{"type":"response_item","timestamp":"2024-01-01T10:03:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"more"}]}}` + "\n")
+	f.Close()
+
+	// Second call: incremental parse
+	msgs2, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs2) != 3 {
+		t.Errorf("expected 3 msgs after append, got %d", len(msgs2))
+	}
+	if msgs2[2].Content != "more" {
+		t.Errorf("new message content should be 'more', got %s", msgs2[2].Content)
+	}
+}
+
+func TestMessagesCaching_ToolCallAcrossBoundary(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionID := "tool-test-001"
+	sessionPath := filepath.Join(tmpDir, sessionID+".jsonl")
+
+	// Initial: function call without output
+	initial := `{"type":"session_meta","timestamp":"2024-01-01T10:00:00Z","payload":{"id":"tool-test-001","cwd":"/tmp"}}
+{"type":"response_item","timestamp":"2024-01-01T10:01:00Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"run test"}]}}
+{"type":"response_item","timestamp":"2024-01-01T10:02:00Z","payload":{"type":"function_call","call_id":"call-123","name":"Bash","arguments":"{\"command\":\"echo hello\"}"}}
+`
+	if err := os.WriteFile(sessionPath, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.sessionsDir = tmpDir
+	a.sessionIndex = map[string]string{sessionID: sessionPath}
+
+	// First call: tool call without output
+	msgs1, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should have user message + synthetic message with pending tool
+	if len(msgs1) != 2 {
+		t.Fatalf("expected 2 msgs, got %d", len(msgs1))
+	}
+	if len(msgs1[1].ToolUses) != 1 {
+		t.Fatalf("expected 1 tool use, got %d", len(msgs1[1].ToolUses))
+	}
+	if msgs1[1].ToolUses[0].Output != "" {
+		t.Error("tool use should have no output yet")
+	}
+
+	// Append function output and assistant message
+	f, _ := os.OpenFile(sessionPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	f.WriteString(`{"type":"response_item","timestamp":"2024-01-01T10:03:00Z","payload":{"type":"function_call_output","call_id":"call-123","output":"\"hello\\n\""}}` + "\n")
+	f.WriteString(`{"type":"response_item","timestamp":"2024-01-01T10:04:00Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done"}]}}` + "\n")
+	f.Close()
+
+	// Second call: incremental parse should link the output
+	msgs2, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs2) != 3 {
+		t.Fatalf("expected 3 msgs, got %d", len(msgs2))
+	}
+
+	// Assistant message should have tool with output linked
+	if len(msgs2[2].ToolUses) != 1 {
+		t.Fatalf("expected 1 tool use in assistant message, got %d", len(msgs2[2].ToolUses))
+	}
+	// Output is "hello\n" with quotes because the JSON payload contains \"hello\\n\"
+	// which rawToString unmarshals to the literal string "hello\n" (with quotes)
+	if msgs2[2].ToolUses[0].Output == "" {
+		t.Error("tool use output should be linked, got empty")
+	}
+}

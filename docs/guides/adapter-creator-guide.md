@@ -47,11 +47,17 @@ adapter.Session{
 	AdapterID:   "<your-id>",
 	AdapterName: "<Your Name>",
 	AdapterIcon: a.Icon(),
+	FileSize:    info.Size(),  // Required for size-aware performance optimizations
 	// ... timestamps, tokens, counts
 }
 ```
 
 These are used for badges, filtering, and resume commands in the conversations UI.
+
+**Important:** Always populate `FileSize` from the session file's `os.FileInfo.Size()`. This enables:
+- Dynamic debounce scaling (larger files get longer coalesce windows)
+- Automatic auto-reload disable for huge sessions (>500MB)
+- UI warnings for large sessions
 
 ## Step-by-step
 
@@ -278,9 +284,11 @@ Adapters don't need to do anything special for turn view—it's computed from me
 
 ## Testing Checklist
 
+### Basic Functionality
 - Detect() matches both absolute and relative project roots
 - Sessions() includes AdapterIcon from Icon()
 - Sessions() sorts by UpdatedAt
+- Sessions() populates FileSize for all sessions
 - Messages() attaches tool uses and token usage correctly
 - Messages() populates ContentBlocks with proper types and linking
 - ContentBlocks tool_use and tool_result share matching ToolUseID
@@ -288,9 +296,16 @@ Adapters don't need to do anything special for turn view—it's computed from me
 - Watch() emits create/write events (if supported)
 - Watch() events include SessionID (not empty string)
 - Conversation flow view renders messages with inline tool results
+
+### Performance & Caching
+- Messages() returns cached results when file unchanged (cache hit)
+- Messages() incrementally parses when file grows (no full re-parse)
 - Metadata cache hits for unchanged files (no re-parse)
-- Active session file growth does NOT trigger full re-parse (incremental or two-pass)
+- Active session file growth does NOT trigger full re-parse
 - Sessions() with 50+ files completes in <50ms (benchmark)
+- Messages() full parse (1MB) completes in <50ms (benchmark)
+- Messages() incremental parse (append to large file) completes in <10ms (benchmark)
+- Cache hit returns results in <1ms (benchmark)
 
 ## Performance Best Practices
 
@@ -502,6 +517,194 @@ The `Messages()` method may be called frequently when a session is selected:
 - Consider caching parsed messages with TTL or invalidation on watch events
 - Use read-only SQLite mode (`?mode=ro`) to avoid lock contention
 - Avoid repeated directory scans; cache session-to-path mappings
+
+## Using the Shared Cache Package
+
+Sidecar provides a generic caching utility in `internal/adapter/cache` that handles file-based invalidation and LRU eviction. Use it for both metadata and message caching.
+
+### Basic Cache Setup
+
+```go
+import "github.com/marcus/sidecar/internal/adapter/cache"
+
+type Adapter struct {
+    metaCache *cache.Cache[SessionMetadata]
+    msgCache  *cache.Cache[messageCacheEntry]
+}
+
+func New() *Adapter {
+    return &Adapter{
+        metaCache: cache.New[SessionMetadata](1024),   // 1024 sessions max
+        msgCache:  cache.New[messageCacheEntry](100),  // 100 message sets max
+    }
+}
+```
+
+### Cache with File Validation
+
+The cache automatically invalidates when file size or modification time changes:
+
+```go
+func (a *Adapter) sessionMetadata(path string, info os.FileInfo) (*SessionMetadata, error) {
+    // Check cache — validates against size and modTime
+    if meta, ok := a.metaCache.Get(path, info.Size(), info.ModTime()); ok {
+        return &meta, nil // cache hit
+    }
+
+    // Cache miss — parse file
+    meta, err := a.parseMetadata(path)
+    if err != nil {
+        return nil, err
+    }
+
+    // Store in cache
+    a.metaCache.Set(path, *meta, info.Size(), info.ModTime(), 0)
+    return meta, nil
+}
+```
+
+### Incremental Parsing with Offset Tracking
+
+For append-only formats (JSONL), use `GetWithOffset` to resume parsing from where you left off:
+
+```go
+type messageCacheEntry struct {
+    messages   []adapter.Message
+    byteOffset int64  // resume point
+}
+
+func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
+    path := a.sessionFilePath(sessionID)
+    info, _ := os.Stat(path)
+
+    // Check cache with offset support
+    cached, offset, cachedSize, cachedModTime, ok := a.msgCache.GetWithOffset(path)
+
+    if ok {
+        // Check if file changed
+        changed, grew, _, _ := cache.FileChanged(path, cachedSize, cachedModTime)
+
+        if !changed {
+            return cached.messages, nil // exact cache hit
+        }
+
+        if grew {
+            // File grew — incremental parse from offset
+            return a.parseIncremental(path, cached, offset, info)
+        }
+    }
+
+    // Full parse (new file, file shrank, or no cache)
+    return a.parseFull(path, info)
+}
+
+func (a *Adapter) parseIncremental(path string, cached messageCacheEntry, offset int64, info os.FileInfo) ([]adapter.Message, error) {
+    // Use shared IncrementalReader utility
+    reader, err := cache.NewIncrementalReader(path, offset)
+    if err != nil {
+        return nil, err
+    }
+    defer reader.Close()
+
+    messages := append([]adapter.Message{}, cached.messages...) // copy
+
+    for {
+        line, err := reader.Next()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, err
+        }
+
+        msg, err := a.parseLine(line)
+        if err != nil {
+            continue
+        }
+        messages = append(messages, msg)
+    }
+
+    a.msgCache.Set(path, messageCacheEntry{
+        messages:   messages,
+        byteOffset: reader.Offset(),
+    }, info.Size(), info.ModTime(), reader.Offset())
+
+    return messages, nil
+}
+```
+
+### Cache Utility Functions
+
+The cache package provides helper functions:
+
+```go
+// Check if a file changed since cached
+changed, grew, info, err := cache.FileChanged(path, cachedSize, cachedModTime)
+
+// Delete specific entries
+a.msgCache.Delete(path)
+
+// Delete entries matching a condition
+a.msgCache.DeleteIf(func(key string, entry cache.Entry[T]) bool {
+    return time.Since(entry.LastAccess) > time.Hour
+})
+```
+
+## Writing Performance Benchmarks
+
+Use the test utilities in `internal/adapter/testutil` to generate realistic fixtures for benchmarking.
+
+### Generating Test Fixtures
+
+```go
+import "github.com/marcus/sidecar/internal/adapter/testutil"
+
+func BenchmarkMessages(b *testing.B) {
+    tmpDir := b.TempDir()
+    sessionFile := filepath.Join(tmpDir, "session.jsonl")
+
+    // Generate a ~1MB session file with 500 message pairs
+    messageCount := testutil.ApproximateMessageCount(1*1024*1024, 1024)
+    if err := testutil.GenerateClaudeCodeSessionFile(sessionFile, messageCount, 1024); err != nil {
+        b.Fatalf("failed to generate test file: %v", err)
+    }
+
+    a := New()
+    // ... setup adapter
+
+    b.ReportAllocs()
+    b.ResetTimer()
+
+    for i := 0; i < b.N; i++ {
+        _, _ = a.Messages("session-id")
+    }
+}
+```
+
+### Benchmark Scenarios
+
+Create benchmarks for these scenarios:
+
+| Scenario | Target | Description |
+|----------|--------|-------------|
+| Full parse (1MB) | <50ms | Parse complete small file |
+| Full parse (10MB) | <500ms | Parse medium file |
+| Cache hit | <1ms | Return cached messages |
+| Incremental parse | <10ms | Parse 1KB append to large file |
+| Sessions (50 files) | <50ms | List all sessions |
+
+### Running Benchmarks
+
+```bash
+# Run all benchmarks with memory stats
+go test -bench=. -benchmem ./internal/adapter/myadapter/
+
+# Compare before/after changes
+go test -bench=. -count=5 ./internal/adapter/myadapter/ > old.txt
+# ... make changes ...
+go test -bench=. -count=5 ./internal/adapter/myadapter/ > new.txt
+benchstat old.txt new.txt
+```
 
 ## Minimal Skeleton
 

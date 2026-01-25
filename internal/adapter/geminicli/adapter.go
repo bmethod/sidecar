@@ -151,6 +151,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			EstCost:      meta.EstCost,
 			IsSubAgent:   false,
 			MessageCount: meta.MsgCount,
+			FileSize:     info.Size(),
 		})
 	}
 

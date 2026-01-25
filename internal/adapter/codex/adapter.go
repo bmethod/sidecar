@@ -13,27 +13,14 @@ import (
 	"time"
 
 	"github.com/marcus/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/adapter/cache"
 )
-
-// scannerBufPool recycles buffers for bufio.Scanner to reduce allocations.
-var scannerBufPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 1024*1024)
-	},
-}
-
-func getScannerBuffer() []byte {
-	return scannerBufPool.Get().([]byte)
-}
-
-func putScannerBuffer(buf []byte) {
-	scannerBufPool.Put(buf)
-}
 
 const (
 	adapterID           = "codex"
 	adapterName         = "Codex"
 	metaCacheMaxEntries = 2048
+	msgCacheMaxEntries  = 128 // fewer entries since messages are larger
 	dirCacheTTL         = 500 * time.Millisecond // TTL for directory listing cache (td-c9ff3aac)
 	// Two-pass parsing thresholds (td-a2c1dd41)
 	metaParseSmallFileThreshold = 16 * 1024 // Files smaller than 16KB use full scan
@@ -50,13 +37,27 @@ type dirCacheEntry struct {
 // Adapter implements the adapter.Adapter interface for Codex CLI sessions.
 type Adapter struct {
 	sessionsDir     string
-	sessionIndex    map[string]string      // sessionID -> file path cache
-	totalUsageCache map[string]*TokenUsage // sessionID -> total usage (populated by Messages)
-	mu              sync.RWMutex           // guards sessionIndex and totalUsageCache
+	sessionIndex    map[string]string                // sessionID -> file path cache
+	totalUsageCache map[string]*TokenUsage           // sessionID -> total usage (populated by Messages)
+	mu              sync.RWMutex                     // guards sessionIndex and totalUsageCache
 	metaCache       map[string]sessionMetaCacheEntry
-	metaMu          sync.RWMutex // guards metaCache
+	metaMu          sync.RWMutex                        // guards metaCache
+	msgCache        *cache.Cache[messageCacheEntry]     // path -> cached messages
 	dirCache        *dirCacheEntry
 	dirCacheMu      sync.RWMutex // guards dirCache
+}
+
+// messageCacheEntry holds cached messages with incremental parsing state.
+type messageCacheEntry struct {
+	messages        []adapter.Message
+	pendingTools    []adapter.ToolUse
+	toolIndex       map[string]int
+	pendingThinking []adapter.ThinkingBlock
+	pendingUsage    *adapter.TokenUsage
+	currentModel    string
+	totalUsage      *TokenUsage
+	lastTimestamp   time.Time
+	byteOffset      int64
 }
 
 // New creates a new Codex adapter.
@@ -67,6 +68,7 @@ func New() *Adapter {
 		sessionIndex:    make(map[string]string),
 		totalUsageCache: make(map[string]*TokenUsage),
 		metaCache:       make(map[string]sessionMetaCacheEntry),
+		msgCache:        cache.New[messageCacheEntry](msgCacheMaxEntries),
 	}
 }
 
@@ -151,6 +153,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			IsActive:     time.Since(meta.LastMsg) < 5*time.Minute,
 			TotalTokens:  meta.TotalTokens,
 			MessageCount: meta.MsgCount,
+			FileSize:     f.info.Size(),
 		})
 
 		// Add to new index (will be swapped atomically after loop)
@@ -172,201 +175,394 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 }
 
 // Messages returns all messages for the given session.
+// Uses caching with incremental parsing for append-only growth optimization.
 func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 	path := a.sessionFilePath(sessionID)
 	if path == "" {
 		return nil, nil
 	}
 
-	file, err := os.Open(path)
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Check cache for existing entry (if cache is initialized)
+	if a.msgCache != nil {
+		cached, offset, cachedSize, cachedModTime, ok := a.msgCache.GetWithOffset(path)
+		if ok {
+			// Exact cache hit: file unchanged
+			if info.Size() == cachedSize && info.ModTime().Equal(cachedModTime) {
+				return copyMessages(cached.messages), nil
+			}
+
+			// File grew: incremental parse from saved offset
+			if info.Size() > cachedSize && offset > 0 {
+				messages, entry, err := a.parseMessagesIncremental(path, sessionID, cached, offset, info)
+				if err == nil {
+					a.msgCache.Set(path, entry, info.Size(), info.ModTime(), entry.byteOffset)
+					// Update total usage cache
+					if entry.totalUsage != nil {
+						a.mu.Lock()
+						a.totalUsageCache[sessionID] = entry.totalUsage
+						a.mu.Unlock()
+					}
+					return messages, nil
+				}
+				// Fall through to full parse on error
+			}
+			// File shrank or other change: full re-parse
+		}
+	}
+
+	// Full parse
+	messages, entry, err := a.parseMessagesFull(path, sessionID, info)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
-	var messages []adapter.Message
-	var pendingTools []adapter.ToolUse
-	toolIndex := make(map[string]int)
-	var pendingThinking []adapter.ThinkingBlock
-	var pendingUsage *adapter.TokenUsage
-	var totalUsage *TokenUsage // Captured for Usage() to avoid re-scan
-	var currentModel string
-	var lastTimestamp time.Time
-
-	flushPending := func(ts time.Time) {
-		if len(pendingTools) == 0 && len(pendingThinking) == 0 {
-			return
-		}
-		msg := adapter.Message{
-			ID:             "synthetic-" + shortID(sessionID) + "-" + fmt.Sprintf("%d", len(messages)),
-			Role:           "assistant",
-			Content:        "tool calls",
-			Timestamp:      ts,
-			Model:          currentModel,
-			ToolUses:       append([]adapter.ToolUse(nil), pendingTools...),
-			ThinkingBlocks: append([]adapter.ThinkingBlock(nil), pendingThinking...),
-		}
-		if pendingUsage != nil {
-			msg.TokenUsage = *pendingUsage
-			pendingUsage = nil
-		}
-		messages = append(messages, msg)
-		pendingTools = nil
-		pendingThinking = nil
-		toolIndex = make(map[string]int)
+	if a.msgCache != nil {
+		a.msgCache.Set(path, entry, info.Size(), info.ModTime(), entry.byteOffset)
 	}
 
-	scanner := bufio.NewScanner(file)
-	buf := getScannerBuffer()
-	defer putScannerBuffer(buf)
-	scanner.Buffer(buf, 10*1024*1024)
-
-	for scanner.Scan() {
-		var record RawRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			continue
-		}
-		if !record.Timestamp.IsZero() {
-			lastTimestamp = record.Timestamp
-		}
-
-		switch record.Type {
-		case "turn_context":
-			var payload TurnContextPayload
-			if err := json.Unmarshal(record.Payload, &payload); err == nil && payload.Model != "" {
-				currentModel = payload.Model
-			}
-
-		case "response_item":
-			var base ResponseItemBase
-			if err := json.Unmarshal(record.Payload, &base); err != nil {
-				continue
-			}
-			switch base.Type {
-			case "message":
-				var msg ResponseMessagePayload
-				if err := json.Unmarshal(record.Payload, &msg); err != nil {
-					continue
-				}
-				if msg.Role != "user" && msg.Role != "assistant" {
-					continue
-				}
-				if msg.Role == "user" {
-					flushPending(record.Timestamp)
-				}
-
-				content := contentFromBlocks(msg.Content)
-				message := adapter.Message{
-					ID:        fmt.Sprintf("%s-%d", sessionID, len(messages)),
-					Role:      msg.Role,
-					Content:   content,
-					Timestamp: record.Timestamp,
-					Model:     currentModel,
-				}
-				if msg.Role == "assistant" {
-					message.ToolUses = append(message.ToolUses, pendingTools...)
-					message.ThinkingBlocks = append(message.ThinkingBlocks, pendingThinking...)
-					pendingTools = nil
-					pendingThinking = nil
-					toolIndex = make(map[string]int)
-					if pendingUsage != nil {
-						message.TokenUsage = *pendingUsage
-						pendingUsage = nil
-					}
-				}
-				messages = append(messages, message)
-
-			case "function_call", "custom_tool_call":
-				var call ResponseToolCallPayload
-				if err := json.Unmarshal(record.Payload, &call); err != nil {
-					continue
-				}
-				input := toolInputString(call.Arguments, call.Input)
-				tool := adapter.ToolUse{
-					ID:    call.CallID,
-					Name:  call.Name,
-					Input: input,
-				}
-				toolIndex[call.CallID] = len(pendingTools)
-				pendingTools = append(pendingTools, tool)
-
-			case "function_call_output", "custom_tool_call_output":
-				var output ResponseToolOutputPayload
-				if err := json.Unmarshal(record.Payload, &output); err != nil {
-					continue
-				}
-				out := toolOutputString(output.Output)
-				if idx, ok := toolIndex[output.CallID]; ok && idx < len(pendingTools) {
-					pendingTools[idx].Output = out
-				} else {
-					toolIndex[output.CallID] = len(pendingTools)
-					pendingTools = append(pendingTools, adapter.ToolUse{
-						ID:     output.CallID,
-						Output: out,
-					})
-				}
-
-			case "reasoning":
-				var reason ResponseReasoningPayload
-				if err := json.Unmarshal(record.Payload, &reason); err != nil {
-					continue
-				}
-				for _, summary := range reason.Summary {
-					if strings.TrimSpace(summary.Text) == "" {
-						continue
-					}
-					pendingThinking = append(pendingThinking, adapter.ThinkingBlock{
-						Content:    summary.Text,
-						TokenCount: len(summary.Text) / 4,
-					})
-				}
-			}
-
-		case "event_msg":
-			var event EventMsgPayload
-			if err := json.Unmarshal(record.Payload, &event); err != nil {
-				continue
-			}
-			switch event.Type {
-			case "agent_reasoning":
-				if strings.TrimSpace(event.Text) != "" {
-					pendingThinking = append(pendingThinking, adapter.ThinkingBlock{
-						Content:    event.Text,
-						TokenCount: len(event.Text) / 4,
-					})
-				}
-			case "token_count":
-				if event.Info == nil {
-					continue
-				}
-				if event.Info.LastTokenUsage != nil {
-					pendingUsage = convertUsage(event.Info.LastTokenUsage)
-				}
-				if event.Info.TotalTokenUsage != nil {
-					totalUsage = event.Info.TotalTokenUsage
-				}
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	if info, err := file.Stat(); err == nil {
-		a.invalidateSessionMetaCacheIfChanged(path, info)
-	}
-
-	flushPending(lastTimestamp)
-
-	// Cache total usage for Usage() to avoid re-scanning
-	if totalUsage != nil {
+	// Update total usage cache
+	if entry.totalUsage != nil {
 		a.mu.Lock()
-		a.totalUsageCache[sessionID] = totalUsage
+		a.totalUsageCache[sessionID] = entry.totalUsage
 		a.mu.Unlock()
 	}
 
 	return messages, nil
+}
+
+// parseMessagesFull parses all messages from a session file.
+func (a *Adapter) parseMessagesFull(path, sessionID string, info os.FileInfo) ([]adapter.Message, messageCacheEntry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, messageCacheEntry{}, err
+	}
+	defer file.Close()
+
+	state := newParseState(sessionID)
+	var bytesRead int64
+
+	scanner := bufio.NewScanner(file)
+	buf := cache.GetScannerBuffer()
+	defer cache.PutScannerBuffer(buf)
+	scanner.Buffer(buf, 10*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		bytesRead += int64(len(line)) + 1
+		a.processMessageRecord(line, state)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, messageCacheEntry{}, err
+	}
+
+	a.invalidateSessionMetaCacheIfChanged(path, info)
+
+	// Flush any remaining pending state
+	state.flushPending()
+
+	entry := messageCacheEntry{
+		messages:        copyMessages(state.messages),
+		pendingTools:    copyToolUses(state.pendingTools),
+		toolIndex:       copyToolIndex(state.toolIndex),
+		pendingThinking: copyThinkingBlocks(state.pendingThinking),
+		pendingUsage:    state.pendingUsage,
+		currentModel:    state.currentModel,
+		totalUsage:      state.totalUsage,
+		lastTimestamp:   state.lastTimestamp,
+		byteOffset:      bytesRead,
+	}
+
+	return state.messages, entry, nil
+}
+
+// parseMessagesIncremental resumes parsing from a byte offset.
+func (a *Adapter) parseMessagesIncremental(path, sessionID string, cached messageCacheEntry, startOffset int64, info os.FileInfo) ([]adapter.Message, messageCacheEntry, error) {
+	reader, err := cache.NewIncrementalReader(path, startOffset)
+	if err != nil {
+		return nil, messageCacheEntry{}, err
+	}
+	defer reader.Close()
+
+	// Restore state from cached entry
+	state := &parseState{
+		sessionID:       sessionID,
+		messages:        copyMessages(cached.messages),
+		pendingTools:    copyToolUses(cached.pendingTools),
+		toolIndex:       copyToolIndex(cached.toolIndex),
+		pendingThinking: copyThinkingBlocks(cached.pendingThinking),
+		pendingUsage:    cached.pendingUsage,
+		currentModel:    cached.currentModel,
+		totalUsage:      cached.totalUsage,
+		lastTimestamp:   cached.lastTimestamp,
+	}
+
+	for {
+		line, err := reader.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, messageCacheEntry{}, err
+		}
+		a.processMessageRecord(line, state)
+	}
+
+	a.invalidateSessionMetaCacheIfChanged(path, info)
+
+	// Flush any remaining pending state
+	state.flushPending()
+
+	entry := messageCacheEntry{
+		messages:        copyMessages(state.messages),
+		pendingTools:    copyToolUses(state.pendingTools),
+		toolIndex:       copyToolIndex(state.toolIndex),
+		pendingThinking: copyThinkingBlocks(state.pendingThinking),
+		pendingUsage:    state.pendingUsage,
+		currentModel:    state.currentModel,
+		totalUsage:      state.totalUsage,
+		lastTimestamp:   state.lastTimestamp,
+		byteOffset:      reader.Offset(),
+	}
+
+	return state.messages, entry, nil
+}
+
+// parseState holds mutable state during message parsing.
+type parseState struct {
+	sessionID       string
+	messages        []adapter.Message
+	pendingTools    []adapter.ToolUse
+	toolIndex       map[string]int
+	pendingThinking []adapter.ThinkingBlock
+	pendingUsage    *adapter.TokenUsage
+	totalUsage      *TokenUsage
+	currentModel    string
+	lastTimestamp   time.Time
+}
+
+func newParseState(sessionID string) *parseState {
+	return &parseState{
+		sessionID: sessionID,
+		toolIndex: make(map[string]int),
+	}
+}
+
+// flushPending creates a synthetic message for any remaining pending tools/thinking.
+func (s *parseState) flushPending() {
+	if len(s.pendingTools) == 0 && len(s.pendingThinking) == 0 {
+		return
+	}
+	msg := adapter.Message{
+		ID:             "synthetic-" + shortID(s.sessionID) + "-" + fmt.Sprintf("%d", len(s.messages)),
+		Role:           "assistant",
+		Content:        "tool calls",
+		Timestamp:      s.lastTimestamp,
+		Model:          s.currentModel,
+		ToolUses:       append([]adapter.ToolUse(nil), s.pendingTools...),
+		ThinkingBlocks: append([]adapter.ThinkingBlock(nil), s.pendingThinking...),
+	}
+	if s.pendingUsage != nil {
+		msg.TokenUsage = *s.pendingUsage
+		s.pendingUsage = nil
+	}
+	s.messages = append(s.messages, msg)
+	s.pendingTools = nil
+	s.pendingThinking = nil
+	s.toolIndex = make(map[string]int)
+}
+
+// processMessageRecord parses a single JSONL record and updates parse state.
+func (a *Adapter) processMessageRecord(line []byte, state *parseState) {
+	var record RawRecord
+	if err := json.Unmarshal(line, &record); err != nil {
+		return
+	}
+	if !record.Timestamp.IsZero() {
+		state.lastTimestamp = record.Timestamp
+	}
+
+	switch record.Type {
+	case "turn_context":
+		var payload TurnContextPayload
+		if err := json.Unmarshal(record.Payload, &payload); err == nil && payload.Model != "" {
+			state.currentModel = payload.Model
+		}
+
+	case "response_item":
+		var base ResponseItemBase
+		if err := json.Unmarshal(record.Payload, &base); err != nil {
+			return
+		}
+		switch base.Type {
+		case "message":
+			var msg ResponseMessagePayload
+			if err := json.Unmarshal(record.Payload, &msg); err != nil {
+				return
+			}
+			if msg.Role != "user" && msg.Role != "assistant" {
+				return
+			}
+			if msg.Role == "user" {
+				state.flushPending()
+			}
+
+			content := contentFromBlocks(msg.Content)
+			message := adapter.Message{
+				ID:        fmt.Sprintf("%s-%d", state.sessionID, len(state.messages)),
+				Role:      msg.Role,
+				Content:   content,
+				Timestamp: record.Timestamp,
+				Model:     state.currentModel,
+			}
+			if msg.Role == "assistant" {
+				message.ToolUses = append(message.ToolUses, state.pendingTools...)
+				message.ThinkingBlocks = append(message.ThinkingBlocks, state.pendingThinking...)
+				state.pendingTools = nil
+				state.pendingThinking = nil
+				state.toolIndex = make(map[string]int)
+				if state.pendingUsage != nil {
+					message.TokenUsage = *state.pendingUsage
+					state.pendingUsage = nil
+				}
+			}
+			state.messages = append(state.messages, message)
+
+		case "function_call", "custom_tool_call":
+			var call ResponseToolCallPayload
+			if err := json.Unmarshal(record.Payload, &call); err != nil {
+				return
+			}
+			input := toolInputString(call.Arguments, call.Input)
+			tool := adapter.ToolUse{
+				ID:    call.CallID,
+				Name:  call.Name,
+				Input: input,
+			}
+			state.toolIndex[call.CallID] = len(state.pendingTools)
+			state.pendingTools = append(state.pendingTools, tool)
+
+		case "function_call_output", "custom_tool_call_output":
+			var output ResponseToolOutputPayload
+			if err := json.Unmarshal(record.Payload, &output); err != nil {
+				return
+			}
+			out := toolOutputString(output.Output)
+			if idx, ok := state.toolIndex[output.CallID]; ok && idx < len(state.pendingTools) {
+				state.pendingTools[idx].Output = out
+			} else {
+				state.toolIndex[output.CallID] = len(state.pendingTools)
+				state.pendingTools = append(state.pendingTools, adapter.ToolUse{
+					ID:     output.CallID,
+					Output: out,
+				})
+			}
+
+		case "reasoning":
+			var reason ResponseReasoningPayload
+			if err := json.Unmarshal(record.Payload, &reason); err != nil {
+				return
+			}
+			for _, summary := range reason.Summary {
+				if strings.TrimSpace(summary.Text) == "" {
+					continue
+				}
+				state.pendingThinking = append(state.pendingThinking, adapter.ThinkingBlock{
+					Content:    summary.Text,
+					TokenCount: len(summary.Text) / 4,
+				})
+			}
+		}
+
+	case "event_msg":
+		var event EventMsgPayload
+		if err := json.Unmarshal(record.Payload, &event); err != nil {
+			return
+		}
+		switch event.Type {
+		case "agent_reasoning":
+			if strings.TrimSpace(event.Text) != "" {
+				state.pendingThinking = append(state.pendingThinking, adapter.ThinkingBlock{
+					Content:    event.Text,
+					TokenCount: len(event.Text) / 4,
+				})
+			}
+		case "token_count":
+			if event.Info == nil {
+				return
+			}
+			if event.Info.LastTokenUsage != nil {
+				state.pendingUsage = convertUsage(event.Info.LastTokenUsage)
+			}
+			if event.Info.TotalTokenUsage != nil {
+				state.totalUsage = event.Info.TotalTokenUsage
+			}
+		}
+	}
+}
+
+// copyMessages creates a deep copy of messages slice.
+func copyMessages(msgs []adapter.Message) []adapter.Message {
+	if msgs == nil {
+		return nil
+	}
+	cp := make([]adapter.Message, len(msgs))
+	for i, m := range msgs {
+		cp[i] = m
+		if m.ToolUses != nil {
+			cp[i].ToolUses = make([]adapter.ToolUse, len(m.ToolUses))
+			copy(cp[i].ToolUses, m.ToolUses)
+		}
+		if m.ThinkingBlocks != nil {
+			cp[i].ThinkingBlocks = make([]adapter.ThinkingBlock, len(m.ThinkingBlocks))
+			copy(cp[i].ThinkingBlocks, m.ThinkingBlocks)
+		}
+		if m.ContentBlocks != nil {
+			cp[i].ContentBlocks = make([]adapter.ContentBlock, len(m.ContentBlocks))
+			copy(cp[i].ContentBlocks, m.ContentBlocks)
+		}
+	}
+	return cp
+}
+
+// copyToolUses creates a copy of tool uses slice.
+func copyToolUses(tools []adapter.ToolUse) []adapter.ToolUse {
+	if tools == nil {
+		return nil
+	}
+	cp := make([]adapter.ToolUse, len(tools))
+	copy(cp, tools)
+	return cp
+}
+
+// copyThinkingBlocks creates a copy of thinking blocks slice.
+func copyThinkingBlocks(blocks []adapter.ThinkingBlock) []adapter.ThinkingBlock {
+	if blocks == nil {
+		return nil
+	}
+	cp := make([]adapter.ThinkingBlock, len(blocks))
+	copy(cp, blocks)
+	return cp
+}
+
+// copyToolIndex creates a copy of tool index map.
+func copyToolIndex(idx map[string]int) map[string]int {
+	if idx == nil {
+		return make(map[string]int)
+	}
+	cp := make(map[string]int, len(idx))
+	for k, v := range idx {
+		cp[k] = v
+	}
+	return cp
 }
 
 // Usage returns aggregate usage stats for the given session.
@@ -618,8 +814,8 @@ func (a *Adapter) parseSessionMetadataFull(file *os.File, path string) (*Session
 	var totalTokens int
 
 	scanner := bufio.NewScanner(file)
-	buf := getScannerBuffer()
-	defer putScannerBuffer(buf)
+	buf := cache.GetScannerBuffer()
+	defer cache.PutScannerBuffer(buf)
 	scanner.Buffer(buf, 10*1024*1024)
 
 	for scanner.Scan() {
@@ -641,8 +837,8 @@ func (a *Adapter) parseSessionMetadataTwoPass(file *os.File, path string, fileSi
 	var lastRecord time.Time
 	var totalTokens int
 
-	buf := getScannerBuffer()
-	defer putScannerBuffer(buf)
+	buf := cache.GetScannerBuffer()
+	defer cache.PutScannerBuffer(buf)
 
 	// Pass 1: Read first N lines for session_meta, FirstMsg, FirstUserMessage
 	scanner := bufio.NewScanner(file)
@@ -717,8 +913,8 @@ func (a *Adapter) parseSessionMetadataTailOnly(path string, headMeta *SessionMet
 			return nil, err
 		}
 
-		buf := getScannerBuffer()
-		defer putScannerBuffer(buf)
+		buf := cache.GetScannerBuffer()
+		defer cache.PutScannerBuffer(buf)
 
 		scanner := bufio.NewScanner(file)
 		scanner.Buffer(buf, 10*1024*1024)
