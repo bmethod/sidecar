@@ -36,6 +36,10 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return p.handleCreateModalMouse(msg)
 	}
 
+	if p.viewMode == ViewModeRenameShell {
+		return p.handleRenameShellModalMouse(msg)
+	}
+
 	action := p.mouseHandler.HandleMouse(msg)
 
 	switch action.Type {
@@ -125,6 +129,26 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
+func (p *Plugin) handleRenameShellModalMouse(msg tea.MouseMsg) tea.Cmd {
+	p.ensureRenameShellModal()
+	if p.renameShellModal == nil {
+		return nil
+	}
+
+	action := p.renameShellModal.HandleMouse(msg, p.mouseHandler)
+	switch action {
+	case "":
+		return nil
+	case "cancel", renameShellCancelID:
+		p.viewMode = ViewModeList
+		p.clearRenameShellModal()
+		return nil
+	case renameShellActionID, renameShellRenameID:
+		return p.executeRenameShell()
+	}
+	return nil
+}
+
 // handleMouseHover handles hover events for visual feedback.
 func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 	// Guard: absorb background region hovers when a modal is open (td-f63097).
@@ -191,20 +215,8 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 			p.deleteShellConfirmButtonHover = 0
 		}
 	case ViewModeRenameShell:
-		if action.Region == nil {
-			p.renameShellButtonHover = 0
-			return nil
-		}
-		switch action.Region.ID {
-		case regionRenameShellInput:
-			p.renameShellButtonHover = 0 // Clear button hover when hovering input
-		case regionRenameShellConfirm:
-			p.renameShellButtonHover = 1
-		case regionRenameShellCancel:
-			p.renameShellButtonHover = 2
-		default:
-			p.renameShellButtonHover = 0
-		}
+		// Modal library handles hover state internally
+		return nil
 	case ViewModePromptPicker:
 		if p.promptPicker == nil {
 			return nil
@@ -459,17 +471,6 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 	case regionDeleteShellConfirmCancel:
 		// Click cancel button in shell delete modal
 		return p.cancelShellDelete()
-	case regionRenameShellInput:
-		// Click on rename input field
-		p.renameShellFocus = 0
-		p.renameShellInput.Focus()
-	case regionRenameShellConfirm:
-		// Click confirm button in rename shell modal
-		return p.executeRenameShell()
-	case regionRenameShellCancel:
-		// Click cancel button in rename shell modal
-		p.viewMode = ViewModeList
-		p.clearRenameShellModal()
 	case regionKanbanCard:
 		// Click on kanban card - select it
 		if data, ok := action.Region.Data.(kanbanCardData); ok {

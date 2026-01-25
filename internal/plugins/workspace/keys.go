@@ -803,11 +803,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.renameShellSession = shell
 			p.renameShellInput = textinput.New()
 			p.renameShellInput.SetValue(shell.Name)
-			p.renameShellInput.Focus()
 			p.renameShellInput.CharLimit = 50
 			p.renameShellInput.Width = 30
-			p.renameShellFocus = 0
-			p.renameShellButtonHover = 0
+			p.renameShellInput.Prompt = ""
 			p.renameShellError = ""
 		}
 	case "y":
@@ -1346,47 +1344,28 @@ func (p *Plugin) handleCommitForMergeKeys(msg tea.KeyMsg) tea.Cmd {
 
 // handleRenameShellKeys handles keys in the rename shell modal.
 func (p *Plugin) handleRenameShellKeys(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "esc":
-		p.viewMode = ViewModeList
-		p.clearRenameShellModal()
-		return nil
-	case "tab":
-		p.renameShellInput.Blur()
-		p.renameShellFocus = (p.renameShellFocus + 1) % 3
-		if p.renameShellFocus == 0 {
-			p.renameShellInput.Focus()
-		}
-		return nil
-	case "shift+tab":
-		p.renameShellInput.Blur()
-		p.renameShellFocus = (p.renameShellFocus + 2) % 3
-		if p.renameShellFocus == 0 {
-			p.renameShellInput.Focus()
-		}
-		return nil
-	case "enter":
-		if p.renameShellFocus == 2 {
-			// Cancel button
-			p.viewMode = ViewModeList
-			p.clearRenameShellModal()
-			return nil
-		}
-		if p.renameShellFocus == 1 || p.renameShellFocus == 0 {
-			// Confirm button or input field
-			return p.executeRenameShell()
-		}
+	p.ensureRenameShellModal()
+	if p.renameShellModal == nil {
 		return nil
 	}
 
-	// Delegate to textinput when focused
-	if p.renameShellFocus == 0 {
-		p.renameShellError = "" // Clear error on typing
-		var cmd tea.Cmd
-		p.renameShellInput, cmd = p.renameShellInput.Update(msg)
-		return cmd
+	// Clear error on typing when input is focused
+	if p.renameShellModal.FocusedID() == renameShellInputID {
+		p.renameShellError = ""
 	}
-	return nil
+
+	action, cmd := p.renameShellModal.HandleKey(msg)
+
+	switch action {
+	case "cancel", renameShellCancelID:
+		p.viewMode = ViewModeList
+		p.clearRenameShellModal()
+		return nil
+	case renameShellActionID, renameShellRenameID:
+		return p.executeRenameShell()
+	}
+
+	return cmd
 }
 
 // executeRenameShell performs the rename operation.
@@ -1433,8 +1412,8 @@ func (p *Plugin) executeRenameShell() tea.Cmd {
 func (p *Plugin) clearRenameShellModal() {
 	p.renameShellSession = nil
 	p.renameShellInput = textinput.Model{}
-	p.renameShellFocus = 0
-	p.renameShellButtonHover = 0
+	p.renameShellModal = nil
+	p.renameShellModalWidth = 0
 	p.renameShellError = ""
 }
 

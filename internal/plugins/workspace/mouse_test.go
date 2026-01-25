@@ -55,7 +55,6 @@ func TestIsBackgroundRegion(t *testing.T) {
 		regionCreateBackdrop, regionCreateModalBody, regionCreateInput,
 		regionMergeMethodOption, regionMergeConfirmButton,
 		regionTypeSelectorOption, regionTypeSelectorConfirm, regionTypeSelectorCancel, regionTypeSelectorNameInput,
-		regionRenameShellInput, regionRenameShellConfirm, regionRenameShellCancel,
 		regionPromptItem, regionPromptFilter,
 	}
 	for _, id := range modal {

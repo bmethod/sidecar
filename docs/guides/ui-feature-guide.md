@@ -58,6 +58,54 @@ case tea.MouseMsg:
     return p, nil
 ```
 
+### Modal initialization and caching (critical)
+
+**Always call `ensureModal()` in BOTH the View and Update handlers.**
+
+The modal must be initialized before any input handling. Create an `ensure` function that:
+1. Returns early if required state is missing (e.g., `session == nil`)
+2. Caches based on width to avoid rebuilding every frame
+3. Creates the modal only when needed
+
+```go
+func (p *Plugin) ensureMyModal() {
+    if p.targetItem == nil {
+        return
+    }
+    modalW := 50
+    if modalW > p.width-4 {
+        modalW = p.width - 4
+    }
+    if modalW < 20 {
+        modalW = 20  // Prevent negative/tiny widths
+    }
+    // Only rebuild if modal doesn't exist or width changed
+    if p.myModal != nil && p.myModalWidthCache == modalW {
+        return
+    }
+    p.myModalWidthCache = modalW
+    p.myModal = modal.New("Title", modal.WithWidth(modalW), ...).
+        AddSection(...)
+}
+```
+
+**The key handler MUST call ensure before checking nil:**
+```go
+func (p *Plugin) handleMyModalKeys(msg tea.KeyMsg) tea.Cmd {
+    p.ensureMyModal()  // <-- CRITICAL: Initialize before nil check
+    if p.myModal == nil {
+        return nil
+    }
+    action, cmd := p.myModal.HandleKey(msg)
+    // ... handle actions
+    return cmd
+}
+```
+
+Without calling `ensureModal()` in the key handler, the first keypress after opening
+the modal will be dropped because the modal hasn't been created yet (View runs
+after Update in bubbletea).
+
 ### Modal notes
 - `HandleKey` and `HandleMouse` already handle Tab, Shift+Tab, Enter, and Esc.
 - Backdrop clicks return "cancel" by default; use `WithCloseOnBackdropClick(false)` to disable.
