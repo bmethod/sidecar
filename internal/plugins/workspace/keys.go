@@ -44,156 +44,47 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// typeSelectorMaxFocus returns the max focus index based on current selection.
-// Shell: 0=options, 1=nameInput, 2=Confirm, 3=Cancel
-// Worktree: 0=options, 1=Confirm, 2=Cancel (nameInput skipped)
-func (p *Plugin) typeSelectorMaxFocus() int {
-	if p.typeSelectorIdx == 0 {
-		return 3
-	}
-	return 2
-}
-
-// typeSelectorNextFocus advances focus, skipping nameInput when Worktree selected.
-func (p *Plugin) typeSelectorNextFocus() {
-	p.typeSelectorFocus++
-	if p.typeSelectorIdx == 1 && p.typeSelectorFocus == 1 {
-		p.typeSelectorFocus = 2 // skip nameInput for Worktree
-	}
-	if p.typeSelectorFocus > p.typeSelectorMaxFocus() {
-		p.typeSelectorFocus = 0
-	}
-}
-
-// typeSelectorPrevFocus retreats focus, skipping nameInput when Worktree selected.
-func (p *Plugin) typeSelectorPrevFocus() {
-	p.typeSelectorFocus--
-	if p.typeSelectorIdx == 1 && p.typeSelectorFocus == 1 {
-		p.typeSelectorFocus = 0 // skip nameInput for Worktree
-	}
-	if p.typeSelectorFocus < 0 {
-		p.typeSelectorFocus = p.typeSelectorMaxFocus()
-	}
-}
-
-// typeSelectorConfirmFocus returns the focus index for the Confirm button.
-func (p *Plugin) typeSelectorConfirmFocus() int {
-	if p.typeSelectorIdx == 0 {
-		return 2
-	}
-	return 1
-}
-
-// typeSelectorCancelFocus returns the focus index for the Cancel button.
-func (p *Plugin) typeSelectorCancelFocus() int {
-	if p.typeSelectorIdx == 0 {
-		return 3
-	}
-	return 2
-}
-
 // handleTypeSelectorKeys handles keys in the type selector modal.
-// Focus: 0=options, 1=nameInput(Shell only), 2=Confirm, 3=Cancel (Shell)
-//
-//	or 0=options, 1=Confirm, 2=Cancel (Worktree)
 func (p *Plugin) handleTypeSelectorKeys(msg tea.KeyMsg) tea.Cmd {
-	// When name input is focused, forward most keys to it
-	if p.typeSelectorFocus == 1 && p.typeSelectorIdx == 0 {
-		switch msg.String() {
-		case "tab", "shift+tab", "enter", "esc":
-			// Handle these below
-		default:
-			var cmd tea.Cmd
-			p.typeSelectorNameInput, cmd = p.typeSelectorNameInput.Update(msg)
-			return cmd
-		}
+	p.ensureTypeSelectorModal()
+	if p.typeSelectorModal == nil {
+		return nil
 	}
 
-	switch msg.String() {
-	case "tab":
-		if p.typeSelectorFocus == 1 && p.typeSelectorIdx == 0 {
-			p.typeSelectorNameInput.Blur()
-		}
-		p.typeSelectorNextFocus()
-		if p.typeSelectorFocus == 1 && p.typeSelectorIdx == 0 {
-			p.typeSelectorNameInput.Focus()
-		}
-		p.typeSelectorHover = -1
-		p.typeSelectorButtonHover = 0
-	case "shift+tab":
-		if p.typeSelectorFocus == 1 && p.typeSelectorIdx == 0 {
-			p.typeSelectorNameInput.Blur()
-		}
-		p.typeSelectorPrevFocus()
-		if p.typeSelectorFocus == 1 && p.typeSelectorIdx == 0 {
-			p.typeSelectorNameInput.Focus()
-		}
-		p.typeSelectorHover = -1
-		p.typeSelectorButtonHover = 0
-	case "j", "down":
-		if p.typeSelectorFocus == 0 && p.typeSelectorIdx < 1 {
-			p.typeSelectorIdx++
-			// When switching from Shell to Worktree, blur name input if it was focused
-			if p.typeSelectorIdx == 1 {
-				p.typeSelectorNameInput.Blur()
-				p.typeSelectorFocus = 0
-			}
-		}
-		p.typeSelectorHover = -1
-	case "k", "up":
-		if p.typeSelectorFocus == 0 && p.typeSelectorIdx > 0 {
-			p.typeSelectorIdx--
-			// When switching from Worktree to Shell, reset focus to start at options
-			if p.typeSelectorIdx == 0 {
-				p.typeSelectorFocus = 0
-			}
-		}
-		p.typeSelectorHover = -1
-	case "enter":
-		confirmFocus := p.typeSelectorConfirmFocus()
-		cancelFocus := p.typeSelectorCancelFocus()
-		switch {
-		case p.typeSelectorFocus == 0 || p.typeSelectorFocus == confirmFocus:
-			p.viewMode = ViewModeList
-			p.typeSelectorHover = -1
-			p.typeSelectorFocus = 0
-			p.typeSelectorButtonHover = 0
-			if p.typeSelectorIdx == 0 {
-				name := p.typeSelectorNameInput.Value()
-				p.typeSelectorNameInput.SetValue("")
-				p.typeSelectorNameInput.Blur()
-				return p.createNewShell(name)
-			}
-			return p.openCreateModal()
-		case p.typeSelectorFocus == 1 && p.typeSelectorIdx == 0:
-			// Enter in name input = confirm
-			p.viewMode = ViewModeList
-			p.typeSelectorHover = -1
-			p.typeSelectorFocus = 0
-			p.typeSelectorButtonHover = 0
-			name := p.typeSelectorNameInput.Value()
-			p.typeSelectorNameInput.SetValue("")
-			p.typeSelectorNameInput.Blur()
-			return p.createNewShell(name)
-		case p.typeSelectorFocus == cancelFocus:
-			p.viewMode = ViewModeList
-			p.typeSelectorIdx = 1
-			p.typeSelectorHover = -1
-			p.typeSelectorFocus = 0
-			p.typeSelectorButtonHover = 0
-			p.typeSelectorNameInput.SetValue("")
-			p.typeSelectorNameInput.Blur()
-		}
-	case "esc", "q":
-		p.viewMode = ViewModeList
-		p.typeSelectorIdx = 1
-		p.typeSelectorHover = -1
-		p.typeSelectorFocus = 0
-		p.typeSelectorButtonHover = 0
-		p.typeSelectorNameInput.SetValue("")
-		p.typeSelectorNameInput.Blur()
+	// Track selection before to detect changes
+	prevIdx := p.typeSelectorIdx
+
+	action, cmd := p.typeSelectorModal.HandleKey(msg)
+
+	// Modal width depends on selection - rebuild if changed
+	if p.typeSelectorIdx != prevIdx {
+		p.typeSelectorModalWidth = 0 // Force rebuild
 	}
-	return nil
+
+	switch action {
+	case "cancel", typeSelectorCancelID:
+		p.viewMode = ViewModeList
+		p.clearTypeSelectorModal()
+		return nil
+	case typeSelectorConfirmID, "type-shell", "type-workspace":
+		return p.executeTypeSelectorConfirm()
+	}
+
+	return cmd
+}
+
+// executeTypeSelectorConfirm executes the type selector confirmation.
+func (p *Plugin) executeTypeSelectorConfirm() tea.Cmd {
+	p.viewMode = ViewModeList
+	if p.typeSelectorIdx == 0 {
+		// Shell selected
+		name := p.typeSelectorNameInput.Value()
+		p.clearTypeSelectorModal()
+		return p.createNewShell(name)
+	}
+	// Workspace selected
+	p.clearTypeSelectorModal()
+	return p.openCreateModal()
 }
 
 // handlePromptPickerKeys handles keys in the prompt picker modal.
@@ -589,15 +480,14 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 	case "n":
 		// Open type selector modal to choose between Shell and Worktree
 		p.viewMode = ViewModeTypeSelector
-		p.typeSelectorIdx = 1         // Default to Worktree (more common)
-		p.typeSelectorHover = -1      // No hover initially (0-based: -1 = none)
-		p.typeSelectorFocus = 0       // Focus on options by default
-		p.typeSelectorButtonHover = 0 // No button hover initially
+		p.typeSelectorIdx = 1 // Default to Worktree (more common)
 		p.typeSelectorNameInput = textinput.New()
 		p.typeSelectorNameInput.Placeholder = p.nextShellDisplayName()
 		p.typeSelectorNameInput.Prompt = ""
 		p.typeSelectorNameInput.Width = 30
 		p.typeSelectorNameInput.CharLimit = 50
+		p.typeSelectorModal = nil      // Force rebuild
+		p.typeSelectorModalWidth = 0   // Force rebuild
 		return nil
 	case "D":
 		// Check if deleting a shell session

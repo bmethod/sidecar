@@ -248,11 +248,7 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 		p.interactiveState.VisibleStart = 0
 		p.interactiveState.VisibleEnd = 0
 		p.interactiveState.ContentRowOffset = 1
-		var err error
-		cursorRow, cursorCol, paneHeight, paneWidth, cursorVisible, err = p.getCursorPosition()
-		if err != nil {
-			cursorVisible = false
-		}
+		cursorRow, cursorCol, paneHeight, paneWidth, cursorVisible, _ = p.getCursorPosition()
 	}
 
 	visibleHeight := height
@@ -449,11 +445,7 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 		p.interactiveState.VisibleStart = 0
 		p.interactiveState.VisibleEnd = 0
 		p.interactiveState.ContentRowOffset = 1
-		var err error
-		cursorRow, cursorCol, paneHeight, paneWidth, cursorVisible, err = p.getCursorPosition()
-		if err != nil {
-			cursorVisible = false
-		}
+		cursorRow, cursorCol, paneHeight, paneWidth, cursorVisible, _ = p.getCursorPosition()
 	}
 
 	visibleHeight := height

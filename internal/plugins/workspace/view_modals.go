@@ -1114,116 +1114,79 @@ func (p *Plugin) renderCommitForMergeModal(width, height int) string {
 	return ui.OverlayModal(background, modalContent, width, height)
 }
 
-// renderTypeSelectorModal renders the type selector modal (Shell vs Worktree).
-func (p *Plugin) renderTypeSelectorModal(width, height int) string {
-	background := p.renderListView(width, height)
-
+// ensureTypeSelectorModal builds/rebuilds the type selector modal.
+func (p *Plugin) ensureTypeSelectorModal() {
 	// Wider when Shell selected to fit name input
 	modalW := 32
 	if p.typeSelectorIdx == 0 {
 		modalW = 44
 	}
-	if modalW > width-4 {
-		modalW = width - 4
+	if modalW > p.width-4 {
+		modalW = p.width - 4
+	}
+	if modalW < 20 {
+		modalW = 20
 	}
 
-	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Create New"))
-	sb.WriteString("\n\n")
+	// Only rebuild if modal doesn't exist or width changed
+	if p.typeSelectorModal != nil && p.typeSelectorModalWidth == modalW {
+		return
+	}
+	p.typeSelectorModalWidth = modalW
 
-	// Options
-	options := []string{"Shell", "Workspace"}
-	for i, opt := range options {
-		prefix := "  "
-		style := lipgloss.NewStyle().Foreground(styles.TextMuted)
+	// Set placeholder for name input
+	p.typeSelectorNameInput.Placeholder = p.nextShellDisplayName()
 
-		if i == p.typeSelectorIdx {
-			prefix = "> "
-			style = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-		} else if i == p.typeSelectorHover {
-			style = lipgloss.NewStyle().Foreground(styles.TextSecondary)
-		}
+	p.typeSelectorModal = modal.New("Create New",
+		modal.WithWidth(modalW),
+		modal.WithHints(false),
+	).
+		AddSection(p.typeSelectorOptionsSection()).
+		AddSection(modal.When(p.typeSelectorIsShell, p.typeSelectorNameSection())).
+		AddSection(modal.Spacer()).
+		AddSection(modal.Buttons(
+			modal.Btn(" Confirm ", typeSelectorConfirmID),
+			modal.Btn(" Cancel ", typeSelectorCancelID),
+		))
+}
 
-		sb.WriteString(style.Render(prefix + opt))
-		sb.WriteString("\n")
+// typeSelectorIsShell returns true when Shell is selected (for conditional sections).
+func (p *Plugin) typeSelectorIsShell() bool {
+	return p.typeSelectorIdx == 0
+}
+
+// typeSelectorOptionsSection renders the type options list.
+func (p *Plugin) typeSelectorOptionsSection() modal.Section {
+	items := []modal.ListItem{
+		{ID: "type-shell", Label: "Shell"},
+		{ID: "type-workspace", Label: "Workspace"},
+	}
+	return modal.List(typeSelectorListID, items, &p.typeSelectorIdx, modal.WithMaxVisible(2))
+}
+
+// typeSelectorNameSection renders the shell name input.
+func (p *Plugin) typeSelectorNameSection() modal.Section {
+	return modal.InputWithLabel(typeSelectorInputID, "Name (optional):", &p.typeSelectorNameInput)
+}
+
+// clearTypeSelectorModal clears the type selector modal state.
+func (p *Plugin) clearTypeSelectorModal() {
+	p.typeSelectorIdx = 1 // Reset to Worktree default
+	p.typeSelectorNameInput.SetValue("")
+	p.typeSelectorNameInput.Blur()
+	p.typeSelectorModal = nil
+	p.typeSelectorModalWidth = 0
+}
+
+// renderTypeSelectorModal renders the type selector modal (Shell vs Worktree).
+func (p *Plugin) renderTypeSelectorModal(width, height int) string {
+	background := p.renderListView(width, height)
+
+	p.ensureTypeSelectorModal()
+	if p.typeSelectorModal == nil {
+		return background
 	}
 
-	// Show name input when Shell is selected
-	nameInputLines := 0
-	if p.typeSelectorIdx == 0 {
-		sb.WriteString("\n")
-		nameInputLines++
-
-		nameLabel := dimText("Name (optional):")
-		sb.WriteString(nameLabel)
-		sb.WriteString("\n")
-		nameInputLines++
-
-		inputW := modalW - 10
-		if inputW < 20 {
-			inputW = 20
-		}
-		p.typeSelectorNameInput.Width = inputW
-		p.typeSelectorNameInput.Placeholder = p.nextShellDisplayName()
-
-		nameStyle := inputStyle()
-		if p.typeSelectorFocus == 1 {
-			nameStyle = inputFocusedStyle()
-		}
-		sb.WriteString(nameStyle.Render(p.typeSelectorNameInput.View()))
-		sb.WriteString("\n")
-		nameInputLines += 3 // bordered input is 3 lines
-	}
-
-	sb.WriteString("\n")
-
-	// Buttons
-	confirmFocus := p.typeSelectorConfirmFocus()
-	cancelFocus := p.typeSelectorCancelFocus()
-	confirmStyle := styles.Button
-	cancelStyle := styles.Button
-	if p.typeSelectorFocus == confirmFocus {
-		confirmStyle = styles.ButtonFocused
-	} else if p.typeSelectorButtonHover == 1 {
-		confirmStyle = styles.ButtonHover
-	}
-	if p.typeSelectorFocus == cancelFocus {
-		cancelStyle = styles.ButtonFocused
-	} else if p.typeSelectorButtonHover == 2 {
-		cancelStyle = styles.ButtonHover
-	}
-	sb.WriteString(confirmStyle.Render(" Confirm "))
-	sb.WriteString("  ")
-	sb.WriteString(cancelStyle.Render(" Cancel "))
-
-	content := sb.String()
-	modal := modalStyle().Width(modalW).Render(content)
-
-	// Hit regions
-	modalHeight := lipgloss.Height(modal)
-	modalX := (width - modalW) / 2
-	modalY := (height - modalHeight) / 2
-
-	optionStartY := modalY + 4 // border(1) + padding(1) + title(1) + blank(1)
-	optionW := modalW - 6
-
-	for i := range options {
-		p.mouseHandler.HitMap.AddRect(regionTypeSelectorOption, modalX+3, optionStartY+i, optionW, 1, i)
-	}
-
-	hitX := modalX + 3
-	// Name input hit region (when Shell selected)
-	if p.typeSelectorIdx == 0 {
-		// Name input starts after options(2) + blank(1) + label(1) = 4 lines from optionStartY
-		nameInputY := optionStartY + 4
-		p.mouseHandler.HitMap.AddRect(regionTypeSelectorNameInput, hitX, nameInputY, modalW-6, 3, nil)
-	}
-
-	// Buttons after options(2) + blank(1) + nameInputLines + blank(1)
-	buttonY := optionStartY + 2 + nameInputLines + 1
-	p.mouseHandler.HitMap.AddRect(regionTypeSelectorConfirm, hitX, buttonY, 13, 1, nil)
-	cancelX := hitX + 13 + 2
-	p.mouseHandler.HitMap.AddRect(regionTypeSelectorCancel, cancelX, buttonY, 12, 1, nil)
-
-	return ui.OverlayModal(background, modal, width, height)
+	modalContent := p.typeSelectorModal.Render(width, height, p.mouseHandler)
+	return ui.OverlayModal(background, modalContent, width, height)
 }

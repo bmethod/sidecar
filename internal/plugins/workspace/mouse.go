@@ -53,6 +53,10 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return p.handlePromptPickerModalMouse(msg)
 	}
 
+	if p.viewMode == ViewModeTypeSelector {
+		return p.handleTypeSelectorModalMouse(msg)
+	}
+
 	if p.viewMode == ViewModeAgentChoice {
 		return p.handleAgentChoiceModalMouse(msg)
 	}
@@ -219,6 +223,35 @@ func (p *Plugin) handleConfirmDeleteShellModalMouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
+func (p *Plugin) handleTypeSelectorModalMouse(msg tea.MouseMsg) tea.Cmd {
+	p.ensureTypeSelectorModal()
+	if p.typeSelectorModal == nil {
+		return nil
+	}
+
+	// Track selection before to detect changes
+	prevIdx := p.typeSelectorIdx
+
+	action := p.typeSelectorModal.HandleMouse(msg, p.mouseHandler)
+
+	// Modal width depends on selection - rebuild if changed
+	if p.typeSelectorIdx != prevIdx {
+		p.typeSelectorModalWidth = 0 // Force rebuild
+	}
+
+	switch action {
+	case "":
+		return nil
+	case "cancel", typeSelectorCancelID:
+		p.viewMode = ViewModeList
+		p.clearTypeSelectorModal()
+		return nil
+	case typeSelectorConfirmID, "type-shell", "type-workspace":
+		return p.executeTypeSelectorConfirm()
+	}
+	return nil
+}
+
 func (p *Plugin) handlePromptPickerModalMouse(msg tea.MouseMsg) tea.Cmd {
 	if p.promptPicker == nil {
 		return nil
@@ -368,30 +401,8 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 		// Modal library handles hover state internally
 		return nil
 	case ViewModeTypeSelector:
-		if action.Region == nil {
-			p.typeSelectorHover = -1 // No hover
-			p.typeSelectorButtonHover = 0
-			return nil
-		}
-		switch action.Region.ID {
-		case regionTypeSelectorOption:
-			if idx, ok := action.Region.Data.(int); ok {
-				p.typeSelectorHover = idx
-			}
-			p.typeSelectorButtonHover = 0
-		case regionTypeSelectorNameInput:
-			p.typeSelectorButtonHover = 0
-			p.typeSelectorHover = -1
-		case regionTypeSelectorConfirm:
-			p.typeSelectorButtonHover = 1
-			p.typeSelectorHover = -1
-		case regionTypeSelectorCancel:
-			p.typeSelectorButtonHover = 2
-			p.typeSelectorHover = -1
-		default:
-			p.typeSelectorHover = -1
-			p.typeSelectorButtonHover = 0
-		}
+		// Modal library handles hover state internally
+		return nil
 	default:
 		p.createButtonHover = 0
 		// Handle sidebar header button hover
@@ -632,37 +643,6 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 				return p.linkTask(wt, task.ID)
 			}
 		}
-	case regionTypeSelectorOption:
-		// Click on type selector option - select it (visual only)
-		if idx, ok := action.Region.Data.(int); ok {
-			p.typeSelectorIdx = idx
-			p.typeSelectorFocus = 0
-			if idx == 1 {
-				p.typeSelectorNameInput.Blur()
-			}
-		}
-	case regionTypeSelectorNameInput:
-		// Click on name input - focus it
-		p.typeSelectorFocus = 1
-		p.typeSelectorNameInput.Focus()
-	case regionTypeSelectorConfirm:
-		// Click confirm button - execute selected option
-		p.viewMode = ViewModeList
-		if p.typeSelectorIdx == 0 {
-			name := p.typeSelectorNameInput.Value()
-			p.typeSelectorNameInput.SetValue("")
-			p.typeSelectorNameInput.Blur()
-			return p.createNewShell(name)
-		}
-		return p.openCreateModal()
-	case regionTypeSelectorCancel:
-		p.viewMode = ViewModeList
-		p.typeSelectorIdx = 1
-		p.typeSelectorHover = -1
-		p.typeSelectorFocus = 0
-		p.typeSelectorButtonHover = 0
-		p.typeSelectorNameInput.SetValue("")
-		p.typeSelectorNameInput.Blur()
 	}
 	return nil
 }

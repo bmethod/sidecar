@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/sidecar/internal/community"
 	"github.com/marcus/sidecar/internal/keymap"
@@ -20,7 +21,14 @@ const (
 	footerHeight = 1
 	minWidth     = 80
 	minHeight    = 24
+
+	projectSwitcherItemPrefix = "project-switcher-item-"
 )
+
+// projectSwitcherItemID returns the ID for a project item at the given index.
+func projectSwitcherItemID(idx int) string {
+	return fmt.Sprintf("%s%d", projectSwitcherItemPrefix, idx)
+}
 
 // View renders the entire application UI.
 func (m Model) View() string {
@@ -174,9 +182,14 @@ func (m *Model) projectSwitcherListSection() modal.Section {
 		}
 		scrollOffset := m.projectSwitcherScroll
 
+		// Track focusables and line offset
+		focusables := make([]modal.FocusableInfo, 0, visibleCount)
+		lineOffset := 0
+
 		if scrollOffset > 0 {
 			b.WriteString(styles.Muted.Render(fmt.Sprintf("  ↑ %d more above", scrollOffset)))
 			b.WriteString("\n")
+			lineOffset++
 		}
 
 		cursorStyle := lipgloss.NewStyle().Foreground(styles.Primary)
@@ -189,6 +202,8 @@ func (m *Model) projectSwitcherListSection() modal.Section {
 			project := projects[i]
 			isCursor := i == m.projectSwitcherCursor
 			isCurrent := project.Path == m.ui.WorkDir
+			itemID := projectSwitcherItemID(i)
+			isHovered := itemID == hoverID
 
 			if isCursor {
 				b.WriteString(cursorStyle.Render("> "))
@@ -198,12 +213,12 @@ func (m *Model) projectSwitcherListSection() modal.Section {
 
 			var nameStyle lipgloss.Style
 			if isCurrent {
-				if isCursor {
+				if isCursor || isHovered {
 					nameStyle = nameCurrentSelectedStyle
 				} else {
 					nameStyle = nameCurrentStyle
 				}
-			} else if isCursor {
+			} else if isCursor || isHovered {
 				nameStyle = nameSelectedStyle
 			} else {
 				nameStyle = nameNormalStyle
@@ -218,6 +233,15 @@ func (m *Model) projectSwitcherListSection() modal.Section {
 			if i < scrollOffset+visibleCount-1 && i < len(projects)-1 {
 				b.WriteString("\n")
 			}
+
+			// Each project takes 2 lines (name + path)
+			focusables = append(focusables, modal.FocusableInfo{
+				ID:      itemID,
+				OffsetX: 0,
+				OffsetY: lineOffset + (i-scrollOffset)*2,
+				Width:   contentWidth,
+				Height:  2,
+			})
 		}
 
 		remaining := len(projects) - (scrollOffset + visibleCount)
@@ -226,8 +250,49 @@ func (m *Model) projectSwitcherListSection() modal.Section {
 			b.WriteString(styles.Muted.Render(fmt.Sprintf("  ↓ %d more below", remaining)))
 		}
 
-		return modal.RenderedSection{Content: b.String()}
-	}, nil)
+		return modal.RenderedSection{Content: b.String(), Focusables: focusables}
+	}, m.projectSwitcherListUpdate)
+}
+
+// projectSwitcherListUpdate handles key events for the project list.
+func (m *Model) projectSwitcherListUpdate(msg tea.Msg, focusID string) (string, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return "", nil
+	}
+
+	projects := m.projectSwitcherFiltered
+	if len(projects) == 0 {
+		return "", nil
+	}
+
+	switch keyMsg.String() {
+	case "up", "k", "ctrl+p":
+		if m.projectSwitcherCursor > 0 {
+			m.projectSwitcherCursor--
+			m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
+			m.projectSwitcherModalWidth = 0 // Force modal rebuild for scroll
+			m.previewProjectTheme()
+		}
+		return "", nil
+
+	case "down", "j", "ctrl+n":
+		if m.projectSwitcherCursor < len(projects)-1 {
+			m.projectSwitcherCursor++
+			m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
+			m.projectSwitcherModalWidth = 0 // Force modal rebuild for scroll
+			m.previewProjectTheme()
+		}
+		return "", nil
+
+	case "enter":
+		if m.projectSwitcherCursor >= 0 && m.projectSwitcherCursor < len(projects) {
+			return "select", nil
+		}
+		return "", nil
+	}
+
+	return "", nil
 }
 
 // projectSwitcherHintsSection renders the keyboard hints.
