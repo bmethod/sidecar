@@ -728,11 +728,13 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	// input parser due to split-read timing (ESC arrived separately) (td-791865).
 	// Must be checked BEFORE forwarding pending escape, since the ESC was part
 	// of the mouse sequence, not a real user keypress.
-	if msg.Type == tea.KeyRunes && len(msg.Runes) > 5 {
-		if tty.PartialMouseSeqRegex.MatchString(string(msg.Runes)) {
+	// td-e2ce50: Use lenient check to catch truncated/split sequences during fast scrolling.
+	// Catches even very short fragments like "[<" that were previously slipping through.
+	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+		if tty.LooksLikeMouseFragment(string(msg.Runes)) {
 			// Cancel the pending escape — it was the leading byte of this mouse event
 			p.interactiveState.EscapePressed = false
-			return nil
+			return nil // Drop mouse sequence fragments
 		}
 	}
 
@@ -755,6 +757,7 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 		if p.previewOffset > 0 {
 			p.previewOffset = 0
 			p.autoScrollOutput = true
+			p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 		}
 		cmds = append(cmds, p.pasteClipboardToTmuxCmd())
 		return tea.Batch(cmds...)
@@ -764,9 +767,14 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	p.interactiveState.LastKeyTime = time.Now()
 
 	// Snap back to live view if scrolled up, so user can see what they're typing
-	if p.previewOffset > 0 {
+	// td-e2ce50: Multiple guards against bounce during fast scrolling:
+	// 1. Don't snap back if we recently scrolled (time-based protection)
+	// 2. Don't snap back for mouse sequence fragments
+	// 3. Only snap back for actual user typing (single printable chars or specific keys)
+	if p.previewOffset > 0 && p.shouldSnapBack(msg) {
 		p.previewOffset = 0
 		p.autoScrollOutput = true
+		p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 	}
 
 	sessionName := p.interactiveState.TargetSession
@@ -851,13 +859,28 @@ func (p *Plugin) handleEscapeTimer() tea.Cmd {
 	)
 }
 
+// scrollDebounceInterval limits scroll events to ~60fps to prevent lag (td-e2ce50).
+const scrollDebounceInterval = 16 * time.Millisecond
+
+// snapBackCooldown prevents snap-back during active scrolling (td-e2ce50).
+// If user scrolled within this window, don't snap back on suspicious input.
+const snapBackCooldown = 100 * time.Millisecond
+
 // forwardScrollToTmux scrolls through the captured pane output using previewOffset.
 // No tmux subprocesses needed — we scroll through the already-captured 600 lines of scrollback.
 // Scroll up (delta < 0) pauses auto-scroll, scroll down (delta > 0) moves toward live output.
 func (p *Plugin) forwardScrollToTmux(delta int) tea.Cmd {
+	// td-e2ce50: Debounce rapid scroll events to prevent lag
+	now := time.Now()
+	if now.Sub(p.lastScrollTime) < scrollDebounceInterval {
+		return nil
+	}
+	p.lastScrollTime = now
+
 	if delta < 0 {
 		// Scroll up: pause auto-scroll, show older content
 		p.autoScrollOutput = false
+		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
 		p.previewOffset++
 	} else {
 		// Scroll down: show newer content, resume auto-scroll at bottom
@@ -865,6 +888,7 @@ func (p *Plugin) forwardScrollToTmux(delta int) tea.Cmd {
 			p.previewOffset--
 			if p.previewOffset == 0 {
 				p.autoScrollOutput = true
+				p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 			}
 		}
 	}
@@ -1193,4 +1217,51 @@ func renderWithCursor(content string, cursorRow, cursorCol int, visible bool) st
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// shouldSnapBack determines if we should snap back to live view for a given key (td-e2ce50).
+// Returns false during active scrolling or for input that looks like mouse sequence fragments.
+// This prevents bounce-scroll caused by split mouse events triggering snap-back.
+func (p *Plugin) shouldSnapBack(msg tea.KeyMsg) bool {
+	// Guard 1: Don't snap back during active scrolling (time-based protection)
+	// If user scrolled recently, suspicious input is likely mouse garbage
+	if time.Since(p.lastScrollTime) < snapBackCooldown {
+		return false
+	}
+
+	// Guard 2: Don't snap back for anything that looks like mouse sequence data
+	if msg.Type == tea.KeyRunes {
+		s := string(msg.Runes)
+		// Check for any mouse-like fragments
+		if tty.LooksLikeMouseFragment(s) {
+			return false
+		}
+		// Multi-character input (not single keypress) is suspicious during scrolling
+		// Could be paste (which we handle separately) or split mouse sequence
+		if len(msg.Runes) > 1 {
+			return false
+		}
+	}
+
+	// Guard 3: Don't snap back for Escape - it might be start of a mouse sequence
+	// Real escape is handled by the double-escape exit logic
+	if msg.Type == tea.KeyEscape {
+		return false
+	}
+
+	// Snap back for actual user typing:
+	// - Single printable characters
+	// - Navigation/editing keys
+	switch msg.Type {
+	case tea.KeyRunes:
+		// Single character that's not suspicious
+		return len(msg.Runes) == 1
+	case tea.KeyEnter, tea.KeyTab, tea.KeyBackspace, tea.KeyDelete,
+		tea.KeyUp, tea.KeyDown, tea.KeyLeft, tea.KeyRight,
+		tea.KeyHome, tea.KeyEnd, tea.KeyPgUp, tea.KeyPgDown:
+		return true
+	default:
+		// Other special keys (ctrl+x, etc.) - snap back
+		return true
+	}
 }

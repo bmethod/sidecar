@@ -429,6 +429,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.previewOffset--
 			if p.previewOffset == 0 {
 				p.autoScrollOutput = true // Resume auto-scroll when at bottom
+				p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 			}
 		}
 	case "k", "up":
@@ -443,6 +444,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 		// Scroll up toward older content (increase offset from bottom)
 		p.autoScrollOutput = false
+		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
 		p.previewOffset++
 	case "g":
 		if p.activePane == PaneSidebar {
@@ -465,6 +467,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 		// Go to top (oldest content) - pause auto-scroll
 		p.autoScrollOutput = false
+		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
 		p.previewOffset = 10000 // Large offset, will be clamped in render
 	case "G":
 		if p.activePane == PaneSidebar {
@@ -484,6 +487,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		// Go to bottom (newest content) - resume auto-scroll
 		p.previewOffset = 0
 		p.autoScrollOutput = true
+		p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 	case "n":
 		// Open type selector modal to choose between Shell and Worktree
 		p.viewMode = ViewModeTypeSelector
@@ -660,6 +664,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 				} else {
 					p.previewOffset = 0
 					p.autoScrollOutput = true
+					p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 				}
 			} else {
 				p.previewOffset += pageSize
@@ -675,6 +680,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			if p.previewTab == PreviewTabOutput {
 				// For output, offset is from bottom
 				p.autoScrollOutput = false
+				p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
 				p.previewOffset += pageSize
 			} else {
 				if p.previewOffset > pageSize {

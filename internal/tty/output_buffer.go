@@ -25,6 +25,11 @@ var (
 	// partialMouseSeqRegex matches SGR mouse sequences that lost their ESC prefix
 	// due to split-read timing in terminal input.
 	PartialMouseSeqRegex = regexp.MustCompile(`^(\[<\d+;\d+;\d+[Mm])+$`)
+
+	// mouseSequenceDetector is a lenient regex that catches any mouse-like content,
+	// including truncated/split sequences. Used by ContainsMouseSequence() to filter
+	// spurious key events during fast scrolling (td-e2ce50).
+	mouseSequenceDetector = regexp.MustCompile(`\[<\d+[;\d]*`)
 )
 
 // OutputBuffer is a thread-safe bounded buffer for terminal output.
@@ -176,4 +181,36 @@ func (b *OutputBuffer) Len() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return len(b.lines)
+}
+
+// ContainsMouseSequence checks if input looks like it contains SGR mouse data (td-e2ce50).
+// More lenient than PartialMouseSeqRegex - catches truncated/split sequences.
+// Used to filter spurious key events during fast scrolling.
+func ContainsMouseSequence(s string) bool {
+	return strings.Contains(s, "[<") && mouseSequenceDetector.MatchString(s)
+}
+
+// LooksLikeMouseFragment checks if input could be a fragment of an SGR mouse sequence (td-e2ce50).
+// This is even more lenient than ContainsMouseSequence - catches very short fragments
+// like "[<" or "M[<" that occur when terminal splits mouse events across reads.
+// Used to suppress snap-back and key forwarding during fast scrolling.
+func LooksLikeMouseFragment(s string) bool {
+	// Very short: just check for mouse sequence markers
+	if len(s) <= 4 {
+		return strings.Contains(s, "[<") || // Start of sequence
+			strings.Contains(s, ";") && containsDigit(s) || // Mid-sequence
+			(strings.HasSuffix(s, "M") || strings.HasSuffix(s, "m")) && containsDigit(s) // End of sequence
+	}
+	// Longer strings: use full check
+	return ContainsMouseSequence(s)
+}
+
+// containsDigit returns true if s contains at least one ASCII digit.
+func containsDigit(s string) bool {
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			return true
+		}
+	}
+	return false
 }

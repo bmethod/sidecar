@@ -290,11 +290,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
-	// Filter partial SGR mouse sequences
-	if msg.Type == tea.KeyRunes && len(msg.Runes) > 5 {
-		if PartialMouseSeqRegex.MatchString(string(msg.Runes)) {
+	// Filter partial SGR mouse sequences (td-e2ce50: use lenient check for truncated sequences)
+	// Catches even very short fragments like "[<" that occur when terminal splits mouse events.
+	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+		if LooksLikeMouseFragment(string(msg.Runes)) {
 			m.State.EscapePressed = false
-			return nil
+			return nil // Drop mouse sequence fragments
 		}
 	}
 

@@ -120,8 +120,9 @@ type Plugin struct {
 	selectedIdx      int
 	scrollOffset     int // Sidebar list scroll offset
 	visibleCount     int // Number of visible list items
-	previewOffset    int
-	autoScrollOutput bool      // Auto-scroll output to follow agent (paused when user scrolls up)
+	previewOffset       int
+	autoScrollOutput    bool // Auto-scroll output to follow agent (paused when user scrolls up)
+	scrollBaseLineCount int  // Snapshot of lineCount when scroll started (td-f7c8be: prevents bounce on poll)
 	sidebarWidth     int       // Persisted sidebar width
 	sidebarVisible   bool      // Whether sidebar is visible (toggled with \)
 	flashPreviewTime time.Time // When preview flash was triggered
@@ -278,6 +279,7 @@ type Plugin struct {
 
 	// Interactive mode state (feature-gated behind tmux_interactive_input)
 	interactiveState *InteractiveState
+	lastScrollTime   time.Time // For scroll debouncing (td-e2ce50)
 
 	// Sidebar header hover state
 	hoverNewButton            bool
@@ -628,6 +630,37 @@ func (p *Plugin) backgroundPollInterval() time.Duration {
 	return pollIntervalUnfocused
 }
 
+// captureScrollBaseLineCount snapshots the current line count when scroll starts (td-f7c8be).
+// This prevents "bounce-scroll" where polling adds content and shifts the view.
+// Only captures if scrollBaseLineCount is not already set (first scroll in session).
+func (p *Plugin) captureScrollBaseLineCount() {
+	if p.scrollBaseLineCount > 0 {
+		return // Already captured
+	}
+
+	// Get line count from currently selected worktree or shell
+	var lineCount int
+	if p.shellSelected {
+		if shell := p.getSelectedShell(); shell != nil && shell.Agent != nil && shell.Agent.OutputBuf != nil {
+			lineCount = shell.Agent.OutputBuf.LineCount()
+		}
+	} else {
+		if wt := p.selectedWorktree(); wt != nil && wt.Agent != nil && wt.Agent.OutputBuf != nil {
+			lineCount = wt.Agent.OutputBuf.LineCount()
+		}
+	}
+
+	if lineCount > 0 {
+		p.scrollBaseLineCount = lineCount
+	}
+}
+
+// resetScrollBaseLineCount clears the captured line count (td-f7c8be).
+// Called when user scrolls back to bottom (autoScrollOutput = true) or changes selection.
+func (p *Plugin) resetScrollBaseLineCount() {
+	p.scrollBaseLineCount = 0
+}
+
 // pollSelectedAgentNowIfVisible triggers an immediate poll for visible output.
 func (p *Plugin) pollSelectedAgentNowIfVisible() tea.Cmd {
 	wt := p.selectedWorktree()
@@ -851,6 +884,7 @@ func (p *Plugin) moveCursor(delta int) {
 	if selectionChanged {
 		p.previewOffset = 0
 		p.autoScrollOutput = true
+		p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
 		p.taskLoading = false // Reset task loading state for new selection (td-3668584f)
 		// Exit interactive mode when switching selection (td-fc758e88)
 		p.exitInteractiveMode()
@@ -889,6 +923,7 @@ func (p *Plugin) cyclePreviewTab(delta int) tea.Cmd {
 	p.previewTab = PreviewTab((int(p.previewTab) + delta + 3) % 3)
 	p.previewOffset = 0
 	p.autoScrollOutput = true // Reset auto-scroll when switching tabs
+	p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot when switching tabs
 
 	if prevTab == PreviewTabOutput && p.previewTab != PreviewTabOutput {
 		p.clearInteractiveSelection()

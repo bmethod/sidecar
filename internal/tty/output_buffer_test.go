@@ -177,3 +177,71 @@ func TestOutputBuffer_StripPartialMouseSequenceWithTerminator(t *testing.T) {
 		t.Error("expected surrounding content to be preserved")
 	}
 }
+
+// TestContainsMouseSequence tests the lenient mouse sequence detection (td-e2ce50)
+func TestContainsMouseSequence(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+		desc  string
+	}{
+		{"[<65;143;8M", true, "complete sequence"},
+		{"[<65;143;8M[<64;143;8M", true, "multiple complete sequences"},
+		{"[<65;143;", true, "truncated (no M)"},
+		{"8M[<65;143;8M", true, "starts mid-sequence"},
+		{"[<65", true, "very truncated"},
+		{"[<65;183;40M[<64;183;40M", true, "fast scroll sequence"},
+		{"hello", false, "normal text"},
+		{"[<notanumber", false, "not a sequence (non-numeric)"},
+		{"ls -la", false, "command"},
+		{"", false, "empty string"},
+		{"[]", false, "empty brackets"},
+		{"[test]", false, "normal brackets"},
+		{"<65;143;8M", false, "missing opening bracket"},
+	}
+
+	for _, tt := range tests {
+		if got := ContainsMouseSequence(tt.input); got != tt.want {
+			t.Errorf("ContainsMouseSequence(%q) = %v, want %v (%s)", tt.input, got, tt.want, tt.desc)
+		}
+	}
+}
+
+// TestLooksLikeMouseFragment tests the very lenient fragment detection (td-e2ce50)
+func TestLooksLikeMouseFragment(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+		desc  string
+	}{
+		// Very short fragments (the key improvement)
+		{"[<", true, "just start marker"},
+		{"[<6", true, "start + one digit"},
+		{"[<64", true, "start + two digits"},
+		{";1", true, "semicolon + digit (mid-sequence)"},
+		{"3M", true, "digit + M (end of sequence)"},
+		{"3m", true, "digit + m (end of sequence, release)"},
+
+		// Longer sequences (should also match via ContainsMouseSequence)
+		{"[<65;143;8M", true, "complete sequence"},
+		{"[<65;143;8M[<64;143;8M", true, "multiple complete sequences"},
+		{"[<65;143;", true, "truncated (no M)"},
+		{"8M[<65;143;8M", true, "starts mid-sequence"},
+
+		// Non-matches
+		{"hello", false, "normal text"},
+		{"a", false, "single letter"},
+		{"12", false, "just digits (no markers)"},
+		{"ls", false, "command"},
+		{"", false, "empty string"},
+		{"[test]", false, "normal brackets without <"},
+		{"M", false, "just M (no digit)"},
+		{";", false, "just semicolon (no digit)"},
+	}
+
+	for _, tt := range tests {
+		if got := LooksLikeMouseFragment(tt.input); got != tt.want {
+			t.Errorf("LooksLikeMouseFragment(%q) = %v, want %v (%s)", tt.input, got, tt.want, tt.desc)
+		}
+	}
+}

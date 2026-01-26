@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"time"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/mouse"
@@ -494,6 +496,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 						p.selectedShellIdx = shellIdx
 						p.previewOffset = 0
 						p.autoScrollOutput = true
+						p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
 						p.taskLoading = false // Reset task loading on selection change (td-3668584f)
 						// Exit interactive mode when switching selection (td-fc758e88)
 						p.exitInteractiveMode()
@@ -509,6 +512,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 					p.selectedIdx = idx
 					p.previewOffset = 0
 					p.autoScrollOutput = true
+					p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
 					p.taskLoading = false // Reset task loading on selection change (td-3668584f)
 					// Exit interactive mode when switching selection (td-fc758e88)
 					p.exitInteractiveMode()
@@ -526,6 +530,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 			p.previewTab = PreviewTab(idx)
 			p.previewOffset = 0
 			p.autoScrollOutput = true
+			p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot when switching tabs
 			if prevTab == PreviewTabOutput && p.previewTab != PreviewTabOutput {
 				p.clearInteractiveSelection()
 			}
@@ -804,9 +809,17 @@ func (p *Plugin) scrollPreview(delta int) tea.Cmd {
 	// - Scroll UP (delta < 0): show older content (increase offset from bottom)
 	// - Scroll DOWN (delta > 0): show newer content (decrease offset from bottom)
 	if p.previewTab == PreviewTabOutput {
+		// td-e2ce50: Debounce rapid scroll events to prevent lag
+		now := time.Now()
+		if now.Sub(p.lastScrollTime) < scrollDebounceInterval {
+			return nil
+		}
+		p.lastScrollTime = now
+
 		if delta < 0 {
 			// Scroll UP: pause auto-scroll, show older content
 			p.autoScrollOutput = false
+			p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
 			p.previewOffset++
 		} else {
 			// Scroll DOWN: show newer content
@@ -814,6 +827,7 @@ func (p *Plugin) scrollPreview(delta int) tea.Cmd {
 				p.previewOffset--
 				if p.previewOffset == 0 {
 					p.autoScrollOutput = true // Resume auto-scroll when at bottom
+					p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 				}
 			}
 		}

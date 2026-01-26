@@ -293,7 +293,13 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 	} else {
 		// Manual scroll: previewOffset is lines from bottom
 		// offset=0 means bottom, offset=N means N lines up from bottom
-		start = effectiveLineCount - visibleHeight - p.previewOffset
+		// td-f7c8be: Use scrollBaseLineCount to prevent bounce when polling adds content.
+		// Without this, added lines shift the view because offset is relative to bottom.
+		baseCount := effectiveLineCount
+		if p.scrollBaseLineCount > 0 && p.scrollBaseLineCount <= effectiveLineCount {
+			baseCount = p.scrollBaseLineCount
+		}
+		start = baseCount - visibleHeight - p.previewOffset
 		if start < 0 {
 			start = 0
 		}
@@ -489,7 +495,12 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 		end = effectiveLineCount
 	} else {
 		// Manual scroll: previewOffset is lines from bottom
-		start = effectiveLineCount - visibleHeight - p.previewOffset
+		// td-f7c8be: Use scrollBaseLineCount to prevent bounce when polling adds content.
+		baseCount := effectiveLineCount
+		if p.scrollBaseLineCount > 0 && p.scrollBaseLineCount <= effectiveLineCount {
+			baseCount = p.scrollBaseLineCount
+		}
+		start = baseCount - visibleHeight - p.previewOffset
 		if start < 0 {
 			start = 0
 		}
