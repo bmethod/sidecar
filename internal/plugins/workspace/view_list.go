@@ -599,23 +599,61 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 func (p *Plugin) renderShellEntryForSession(shell *ShellSession, selected bool, width int) string {
 	isActiveFocus := selected && p.activePane == PaneSidebar
 
-	// Determine icon based on session state
+	// Determine icon based on session state and agent status
 	var statusIcon string
 	var statusStyle lipgloss.Style
-	if shell.Agent != nil {
-		statusIcon = "●" // Session running
+
+	// td-a29b76: Show agent-specific status when an AI agent is running
+	if shell.ChosenAgent != AgentNone && shell.ChosenAgent != "" {
+		// Shell has an AI agent - show agent status
+		if shell.Agent != nil {
+			switch shell.Agent.Status {
+			case AgentStatusRunning:
+				statusIcon = "●"
+				statusStyle = styles.StatusCompleted // Green - active
+			case AgentStatusWaiting:
+				statusIcon = "○"
+				statusStyle = styles.StatusModified // Yellow - waiting for input
+			case AgentStatusDone:
+				statusIcon = "✓"
+				statusStyle = styles.StatusCompleted // Green/blue - done
+			case AgentStatusError:
+				statusIcon = "✗"
+				statusStyle = styles.StatusDeleted // Red - error
+			default:
+				statusIcon = "○"
+				statusStyle = styles.Muted // Gray - idle/paused
+			}
+		} else {
+			statusIcon = "○"
+			statusStyle = styles.Muted
+		}
+	} else if shell.Agent != nil {
+		// Plain shell (no AI agent)
+		statusIcon = "●"
 		statusStyle = styles.StatusCompleted // Green
 	} else {
-		statusIcon = "○" // No session
+		statusIcon = "○"
 		statusStyle = styles.Muted
 	}
 
 	// Use shell display name
 	displayName := shell.Name
 
-	// Build second line
+	// td-a29b76: Build second line with agent type if present
 	var statusText string
-	if shell.Agent != nil {
+	if shell.ChosenAgent != AgentNone && shell.ChosenAgent != "" {
+		// Show agent type abbreviation
+		agentAbbrev := shellAgentAbbreviations[shell.ChosenAgent]
+		if agentAbbrev == "" {
+			agentAbbrev = string(shell.ChosenAgent)
+		}
+		if shell.Agent != nil {
+			statusText = fmt.Sprintf("%s · running", agentAbbrev)
+		} else {
+			statusText = fmt.Sprintf("%s · stopped", agentAbbrev)
+		}
+	} else if shell.Agent != nil {
 		statusText = "shell · running"
 	} else {
 		statusText = "shell · no session"
