@@ -496,13 +496,8 @@ func (m *Model) switchProject(projectPath string) tea.Cmd {
 		state.SetActivePlugin(oldWorkDir, activePlugin.ID())
 	}
 
-	// Save current worktree state before switching away
-	if oldMainRepo := GetMainWorktreePath(oldWorkDir); oldMainRepo != "" {
-		// Normalize for consistent map keys
-		normalizedOld, _ := normalizePath(oldWorkDir)
-		normalizedMain, _ := normalizePath(oldMainRepo)
-		state.SetLastWorktreePath(normalizedMain, normalizedOld)
-	}
+	// Normalize old workdir for comparisons
+	normalizedOldWorkDir, _ := normalizePath(oldWorkDir)
 
 	// Check if target project has a saved worktree we should restore.
 	// Only restore if projectPath is the main repo - if user explicitly chose a
@@ -515,12 +510,16 @@ func (m *Model) switchProject(projectPath string) tea.Cmd {
 		// Only restore saved worktree if switching to the main repo path
 		if normalizedProject == normalizedTargetMain {
 			if savedWorktree := state.GetLastWorktreePath(normalizedTargetMain); savedWorktree != "" {
-				// Verify saved worktree still exists
-				if WorktreeExists(savedWorktree) {
-					targetPath = savedWorktree
-				} else {
-					// Stale entry - clear it
-					state.ClearLastWorktreePath(normalizedTargetMain)
+				// Don't restore if the saved worktree is where we're coming FROM
+				// (user is explicitly leaving that worktree)
+				if savedWorktree != normalizedOldWorkDir {
+					// Verify saved worktree still exists
+					if WorktreeExists(savedWorktree) {
+						targetPath = savedWorktree
+					} else {
+						// Stale entry - clear it
+						state.ClearLastWorktreePath(normalizedTargetMain)
+					}
 				}
 			}
 		}
