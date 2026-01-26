@@ -139,7 +139,7 @@ func (p *Plugin) createFocusID() string {
 	case 3:
 		return createTaskFieldID
 	case 4:
-		return createIndexedID(createAgentItemPrefix, p.createAgentIdx)
+		return createAgentListID // Use list ID for singleFocus mode
 	case 5:
 		return createSkipPermissionsID
 	case 6:
