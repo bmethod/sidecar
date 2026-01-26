@@ -196,7 +196,7 @@ func TestBuildRipgrepArgs(t *testing.T) {
 			state: &ProjectSearchState{
 				Query: "test",
 			},
-			expectContain: []string{"--json", "--ignore-case", "--fixed-strings", "--", "test"},
+			expectContain: []string{"--line-number", "--ignore-case", "--fixed-strings", "--", "test"},
 			expectExclude: []string{"--word-regexp"},
 		},
 		{
@@ -205,7 +205,7 @@ func TestBuildRipgrepArgs(t *testing.T) {
 				Query:         "test",
 				CaseSensitive: true,
 			},
-			expectContain: []string{"--json", "--fixed-strings"},
+			expectContain: []string{"--line-number", "--fixed-strings"},
 			expectExclude: []string{"--ignore-case"},
 		},
 		{
@@ -214,7 +214,7 @@ func TestBuildRipgrepArgs(t *testing.T) {
 				Query:    "test.*",
 				UseRegex: true,
 			},
-			expectContain: []string{"--json", "--ignore-case"},
+			expectContain: []string{"--line-number", "--ignore-case"},
 			expectExclude: []string{"--fixed-strings"},
 		},
 		{
@@ -223,7 +223,7 @@ func TestBuildRipgrepArgs(t *testing.T) {
 				Query:     "test",
 				WholeWord: true,
 			},
-			expectContain: []string{"--json", "--word-regexp"},
+			expectContain: []string{"--line-number", "--word-regexp"},
 		},
 	}
 
@@ -248,17 +248,13 @@ func TestBuildRipgrepArgs(t *testing.T) {
 }
 
 func TestParseRipgrepOutput(t *testing.T) {
-	// Sample ripgrep JSON output
-	jsonOutput := `{"type":"begin","data":{"path":{"text":"test.go"}}}
-{"type":"match","data":{"path":{"text":"test.go"},"lines":{"text":"func TestSomething() {\n"},"line_number":10,"submatches":[{"match":{"text":"Test"},"start":5,"end":9}]}}
-{"type":"match","data":{"path":{"text":"test.go"},"lines":{"text":"// Test comment\n"},"line_number":20,"submatches":[{"match":{"text":"Test"},"start":3,"end":7}]}}
-{"type":"end","data":{"path":{"text":"test.go"},"stats":{}}}
-{"type":"begin","data":{"path":{"text":"other.go"}}}
-{"type":"match","data":{"path":{"text":"other.go"},"lines":{"text":"var TestVar = 1\n"},"line_number":5,"submatches":[{"match":{"text":"Test"},"start":4,"end":8}]}}
-{"type":"end","data":{"path":{"text":"other.go"},"stats":{}}}`
+	// Sample ripgrep line output (filename:line:column:content)
+	lineOutput := `test.go:10:6:func TestSomething() {
+test.go:20:4:// Test comment
+other.go:5:5:var TestVar = 1`
 
-	reader := strings.NewReader(jsonOutput)
-	results := parseRipgrepOutput(reader, 100)
+	reader := strings.NewReader(lineOutput)
+	results := parseRipgrepOutput(reader, 100, 4) // query "Test" has length 4
 
 	if len(results) != 2 {
 		t.Fatalf("expected 2 files, got %d", len(results))
@@ -274,6 +270,7 @@ func TestParseRipgrepOutput(t *testing.T) {
 	if results[0].Matches[0].LineNo != 10 {
 		t.Errorf("expected first match on line 10, got %d", results[0].Matches[0].LineNo)
 	}
+	// Column is 1-indexed from rg, we convert to 0-indexed: 6-1=5, end=5+4=9
 	if results[0].Matches[0].ColStart != 5 || results[0].Matches[0].ColEnd != 9 {
 		t.Errorf("expected match columns 5-9, got %d-%d",
 			results[0].Matches[0].ColStart, results[0].Matches[0].ColEnd)
@@ -289,17 +286,14 @@ func TestParseRipgrepOutput(t *testing.T) {
 }
 
 func TestParseRipgrepOutput_MaxMatches(t *testing.T) {
-	// Generate many matches
+	// Generate many matches in line format
 	var sb strings.Builder
 	for i := 0; i < 50; i++ {
-		sb.WriteString(`{"type":"match","data":{"path":{"text":"test.go"},"lines":{"text":"line content\n"},"line_number":`)
-		sb.WriteString(strings.Repeat("1", 1))
-		sb.WriteString(`,"submatches":[{"match":{"text":"x"},"start":0,"end":1}]}}`)
-		sb.WriteString("\n")
+		sb.WriteString("test.go:1:1:line content x\n")
 	}
 
 	reader := strings.NewReader(sb.String())
-	results := parseRipgrepOutput(reader, 10) // Limit to 10
+	results := parseRipgrepOutput(reader, 10, 1) // Limit to 10, query length 1
 
 	totalMatches := 0
 	for _, f := range results {
@@ -308,5 +302,141 @@ func TestParseRipgrepOutput_MaxMatches(t *testing.T) {
 
 	if totalMatches > 10 {
 		t.Errorf("expected at most 10 matches, got %d", totalMatches)
+	}
+}
+
+func TestProjectSearchState_FirstMatchIndex(t *testing.T) {
+	tests := []struct {
+		name     string
+		results  []SearchFileResult
+		expected int
+	}{
+		{
+			name:     "empty results",
+			results:  nil,
+			expected: 0,
+		},
+		{
+			name: "single file with matches",
+			results: []SearchFileResult{
+				{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}, {LineNo: 2}}},
+			},
+			expected: 1, // Skip file header at 0, first match at 1
+		},
+		{
+			name: "multiple files",
+			results: []SearchFileResult{
+				{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}}},
+				{Path: "b.go", Matches: []SearchMatch{{LineNo: 5}}},
+			},
+			expected: 1, // First match of first file
+		},
+		{
+			name: "first file collapsed",
+			results: []SearchFileResult{
+				{Path: "a.go", Collapsed: true, Matches: []SearchMatch{{LineNo: 1}}},
+				{Path: "b.go", Collapsed: false, Matches: []SearchMatch{{LineNo: 5}}},
+			},
+			expected: 2, // Skip collapsed file (idx 0), skip second file header (idx 1), first match at 2
+		},
+		{
+			name: "all files collapsed",
+			results: []SearchFileResult{
+				{Path: "a.go", Collapsed: true, Matches: []SearchMatch{{LineNo: 1}}},
+				{Path: "b.go", Collapsed: true, Matches: []SearchMatch{{LineNo: 5}}},
+			},
+			expected: 0, // No visible matches, fallback to 0
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			state := NewProjectSearchState()
+			state.Results = tc.results
+			if got := state.FirstMatchIndex(); got != tc.expected {
+				t.Errorf("FirstMatchIndex() = %d, want %d", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestProjectSearchState_NextMatchIndex(t *testing.T) {
+	state := NewProjectSearchState()
+	state.Results = []SearchFileResult{
+		{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}, {LineNo: 2}}},
+		{Path: "b.go", Matches: []SearchMatch{{LineNo: 5}}},
+	}
+	// Flat structure: 0=a.go, 1=match1, 2=match2, 3=b.go, 4=match3
+
+	tests := []struct {
+		cursor   int
+		expected int
+	}{
+		{cursor: 0, expected: 1}, // From file header, next match is 1
+		{cursor: 1, expected: 2}, // From match1, next is match2
+		{cursor: 2, expected: 4}, // From match2, skip file header at 3, next is match at 4
+		{cursor: 3, expected: 4}, // From file header, next match is 4
+		{cursor: 4, expected: 4}, // At last match, stay there
+	}
+
+	for _, tc := range tests {
+		state.Cursor = tc.cursor
+		if got := state.NextMatchIndex(); got != tc.expected {
+			t.Errorf("cursor %d: NextMatchIndex() = %d, want %d", tc.cursor, got, tc.expected)
+		}
+	}
+}
+
+func TestProjectSearchState_PrevMatchIndex(t *testing.T) {
+	state := NewProjectSearchState()
+	state.Results = []SearchFileResult{
+		{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}, {LineNo: 2}}},
+		{Path: "b.go", Matches: []SearchMatch{{LineNo: 5}}},
+	}
+	// Flat structure: 0=a.go, 1=match1, 2=match2, 3=b.go, 4=match3
+
+	tests := []struct {
+		cursor   int
+		expected int
+	}{
+		{cursor: 4, expected: 2}, // From last match, skip file header at 3, prev is match2 at 2
+		{cursor: 3, expected: 2}, // From file header, prev match is 2
+		{cursor: 2, expected: 1}, // From match2, prev is match1
+		{cursor: 1, expected: 1}, // At first match, stay there
+		{cursor: 0, expected: 0}, // At file header before any match, stay there
+	}
+
+	for _, tc := range tests {
+		state.Cursor = tc.cursor
+		if got := state.PrevMatchIndex(); got != tc.expected {
+			t.Errorf("cursor %d: PrevMatchIndex() = %d, want %d", tc.cursor, got, tc.expected)
+		}
+	}
+}
+
+func TestProjectSearchState_NearestMatchIndex(t *testing.T) {
+	state := NewProjectSearchState()
+	state.Results = []SearchFileResult{
+		{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}, {LineNo: 2}}},
+		{Path: "b.go", Matches: []SearchMatch{{LineNo: 5}}},
+	}
+	// Flat structure: 0=a.go, 1=match1, 2=match2, 3=b.go, 4=match3
+
+	tests := []struct {
+		fromIdx  int
+		expected int
+	}{
+		{fromIdx: 0, expected: 1}, // From file header, nearest match is 1
+		{fromIdx: 1, expected: 1}, // Already on match
+		{fromIdx: 2, expected: 2}, // Already on match
+		{fromIdx: 3, expected: 4}, // From file header, nearest match forward is 4
+		{fromIdx: 4, expected: 4}, // Already on match
+		{fromIdx: 5, expected: 4}, // Beyond end, search backward to 4
+	}
+
+	for _, tc := range tests {
+		if got := state.NearestMatchIndex(tc.fromIdx); got != tc.expected {
+			t.Errorf("NearestMatchIndex(%d) = %d, want %d", tc.fromIdx, got, tc.expected)
+		}
 	}
 }

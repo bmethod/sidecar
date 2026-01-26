@@ -661,6 +661,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		return p, nil
 
+	case projectSearchDebounceMsg:
+		// Only run search if debounce version matches (no newer keystrokes)
+		if p.projectSearchState != nil && p.projectSearchState.DebounceVersion == msg.Version {
+			return p, RunProjectSearch(p.ctx.WorkDir, p.projectSearchState)
+		}
+		return p, nil
+
 	case ProjectSearchResultsMsg:
 		if p.projectSearchState != nil {
 			p.projectSearchState.IsSearching = false
@@ -670,8 +677,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			} else {
 				p.projectSearchState.Error = ""
 				p.projectSearchState.Results = msg.Results
-				p.projectSearchState.Cursor = 0
 				p.projectSearchState.ScrollOffset = 0
+				// Set cursor to first match (skip file headers)
+				p.projectSearchState.Cursor = p.projectSearchState.FirstMatchIndex()
 			}
 		}
 

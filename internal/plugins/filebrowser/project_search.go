@@ -3,8 +3,8 @@ package filebrowser
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	projectSearchMaxResults = 1000           // Max total matches to display
-	projectSearchTimeout    = 30 * time.Second // Max time for search
+	projectSearchMaxResults  = 1000              // Max total matches to display
+	projectSearchTimeout     = 30 * time.Second  // Max time for search
+	projectSearchDebounce    = 200 * time.Millisecond // Debounce delay before searching
 )
 
 // ProjectSearchState holds the state for project-wide search.
@@ -32,8 +33,17 @@ type ProjectSearchState struct {
 	IsSearching  bool // True while ripgrep is running
 	Error        string
 
+	// Debounce: only run search when version matches
+	DebounceVersion int
+
 	// For future: multiple search tabs
 	TabID int
+}
+
+// projectSearchDebounceMsg is sent after debounce delay to trigger search.
+type projectSearchDebounceMsg struct {
+	Version int
+	Query   string
 }
 
 // SearchFileResult represents a file with search matches.
@@ -49,27 +59,6 @@ type SearchMatch struct {
 	LineText  string // Full line content
 	ColStart  int    // Match start column (0-indexed)
 	ColEnd    int    // Match end column (0-indexed)
-}
-
-// rgMessage represents a ripgrep JSON message.
-type rgMessage struct {
-	Type string `json:"type"`
-	Data struct {
-		Path struct {
-			Text string `json:"text"`
-		} `json:"path"`
-		Lines struct {
-			Text string `json:"text"`
-		} `json:"lines"`
-		LineNumber  int `json:"line_number"`
-		Submatches  []struct {
-			Match struct {
-				Text string `json:"text"`
-			} `json:"match"`
-			Start int `json:"start"`
-			End   int `json:"end"`
-		} `json:"submatches"`
-	} `json:"data"`
 }
 
 // ProjectSearchResultsMsg contains results from a search.
@@ -143,6 +132,82 @@ func (s *ProjectSearchState) ToggleFileCollapse() {
 	}
 }
 
+// FirstMatchIndex returns the flat index of the first match (skipping file headers).
+// Returns 0 if no matches exist.
+func (s *ProjectSearchState) FirstMatchIndex() int {
+	pos := 0
+	for _, f := range s.Results {
+		pos++ // Skip file header
+		if !f.Collapsed && len(f.Matches) > 0 {
+			return pos // First match in first non-collapsed file
+		}
+		if !f.Collapsed {
+			pos += len(f.Matches)
+		}
+	}
+	return 0 // Fallback to 0 if no matches visible
+}
+
+// NextMatchIndex returns the flat index of the next match after current cursor.
+// Skips file headers. Returns current cursor if no next match exists.
+func (s *ProjectSearchState) NextMatchIndex() int {
+	maxIdx := s.FlatLen() - 1
+	for idx := s.Cursor + 1; idx <= maxIdx; idx++ {
+		_, _, isFile := s.FlatItem(idx)
+		if !isFile {
+			return idx
+		}
+	}
+	return s.Cursor // No next match, stay at current
+}
+
+// PrevMatchIndex returns the flat index of the previous match before current cursor.
+// Skips file headers. Returns current cursor if no previous match exists.
+func (s *ProjectSearchState) PrevMatchIndex() int {
+	for idx := s.Cursor - 1; idx >= 0; idx-- {
+		_, _, isFile := s.FlatItem(idx)
+		if !isFile {
+			return idx
+		}
+	}
+	return s.Cursor // No previous match, stay at current
+}
+
+// NearestMatchIndex returns the flat index of the nearest match to the given index.
+// Searches forward first, then backward. Returns 0 if no matches exist.
+func (s *ProjectSearchState) NearestMatchIndex(fromIdx int) int {
+	maxIdx := s.FlatLen() - 1
+	if maxIdx < 0 {
+		return 0
+	}
+
+	// Check current position first
+	if fromIdx >= 0 && fromIdx <= maxIdx {
+		_, _, isFile := s.FlatItem(fromIdx)
+		if !isFile {
+			return fromIdx
+		}
+	}
+
+	// Search forward
+	for idx := fromIdx + 1; idx <= maxIdx; idx++ {
+		_, _, isFile := s.FlatItem(idx)
+		if !isFile {
+			return idx
+		}
+	}
+
+	// Search backward
+	for idx := fromIdx - 1; idx >= 0; idx-- {
+		_, _, isFile := s.FlatItem(idx)
+		if !isFile {
+			return idx
+		}
+	}
+
+	return 0 // No matches found
+}
+
 // GetSelectedFile returns the currently selected file path and line number.
 // If a match is selected, returns file path and line number.
 // If a file header is selected, returns file path and line 0.
@@ -162,6 +227,14 @@ func (s *ProjectSearchState) GetSelectedFile() (path string, lineNo int) {
 	}
 
 	return file.Path, 0
+}
+
+// scheduleProjectSearch schedules a debounced search.
+// Returns a command that fires after the debounce delay.
+func scheduleProjectSearch(version int, query string) tea.Cmd {
+	return tea.Tick(projectSearchDebounce, func(t time.Time) tea.Msg {
+		return projectSearchDebounceMsg{Version: version, Query: query}
+	})
 }
 
 // RunProjectSearch executes ripgrep and returns results.
@@ -191,9 +264,11 @@ func RunProjectSearch(workDir string, state *ProjectSearchState) tea.Cmd {
 			return ProjectSearchResultsMsg{Error: err}
 		}
 
-		results := parseRipgrepOutput(stdout, projectSearchMaxResults)
+		results := parseRipgrepOutput(stdout, projectSearchMaxResults, len(state.Query))
 
-		// Wait for command to finish (ignore exit code - rg returns 1 for no matches)
+		// Kill ripgrep early if we hit our limit - don't wait for it to finish
+		// This is critical for queries with many matches (e.g., common words)
+		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 
 		return ProjectSearchResultsMsg{Results: results}
@@ -203,7 +278,10 @@ func RunProjectSearch(workDir string, state *ProjectSearchState) tea.Cmd {
 // buildRipgrepArgs constructs the ripgrep command arguments.
 func buildRipgrepArgs(state *ProjectSearchState) []string {
 	args := []string{
-		"--json",           // JSON output for structured parsing
+		"--line-number",    // Include line numbers
+		"--column",         // Include column numbers for match position
+		"--no-heading",     // Don't group by file (simpler parsing)
+		"--with-filename",  // Always include filename
 		"--max-count=100",  // Limit matches per file
 		"--max-filesize=1M", // Skip very large files
 	}
@@ -225,8 +303,8 @@ func buildRipgrepArgs(state *ProjectSearchState) []string {
 	return args
 }
 
-// parseRipgrepOutput reads ripgrep JSON output and builds results.
-func parseRipgrepOutput(reader interface{ Read([]byte) (int, error) }, maxMatches int) []SearchFileResult {
+// parseRipgrepOutput reads ripgrep line output (filename:line:col:content) and builds results.
+func parseRipgrepOutput(reader interface{ Read([]byte) (int, error) }, maxMatches int, queryLen int) []SearchFileResult {
 	scanner := bufio.NewScanner(reader)
 	// Increase buffer size for long lines
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -236,48 +314,41 @@ func parseRipgrepOutput(reader interface{ Read([]byte) (int, error) }, maxMatche
 	totalMatches := 0
 
 	for scanner.Scan() && totalMatches < maxMatches {
-		line := scanner.Bytes()
+		line := scanner.Text()
 		if len(line) == 0 {
 			continue
 		}
 
-		var msg rgMessage
-		if err := json.Unmarshal(line, &msg); err != nil {
+		// Parse format: filename:line:column:content
+		// Need to handle filenames that might contain colons (Windows paths, etc.)
+		// ripgrep guarantees line and column are numeric, so we parse from the content backwards
+		path, lineNo, colNo, content := parseRipgrepLine(line)
+		if path == "" {
 			continue
 		}
-
-		if msg.Type != "match" {
-			continue
-		}
-
-		path := msg.Data.Path.Text
-		lineNo := msg.Data.LineNumber
-		lineText := strings.TrimRight(msg.Data.Lines.Text, "\n\r")
 
 		// Get or create file result
 		file, exists := fileMap[path]
 		if !exists {
 			file = &SearchFileResult{
 				Path:    path,
-				Matches: make([]SearchMatch, 0),
+				Matches: make([]SearchMatch, 0, 8),
 			}
 			fileMap[path] = file
 			fileOrder = append(fileOrder, path)
 		}
 
-		// Add matches for each submatch
-		for _, sm := range msg.Data.Submatches {
-			if totalMatches >= maxMatches {
-				break
-			}
-			file.Matches = append(file.Matches, SearchMatch{
-				LineNo:   lineNo,
-				LineText: lineText,
-				ColStart: sm.Start,
-				ColEnd:   sm.End,
-			})
-			totalMatches++
-		}
+		// Calculate match end from query length (column is 1-indexed)
+		colStart := colNo - 1
+		colEnd := colStart + queryLen
+
+		file.Matches = append(file.Matches, SearchMatch{
+			LineNo:   lineNo,
+			LineText: content,
+			ColStart: colStart,
+			ColEnd:   colEnd,
+		})
+		totalMatches++
 	}
 
 	// Build ordered results
@@ -287,6 +358,44 @@ func parseRipgrepOutput(reader interface{ Read([]byte) (int, error) }, maxMatche
 	}
 
 	return results
+}
+
+// parseRipgrepLine parses a ripgrep output line in format: filename:line:column:content
+// Returns empty path if parsing fails.
+func parseRipgrepLine(line string) (path string, lineNo int, colNo int, content string) {
+	// Find first colon (end of filename)
+	// Then find next two colons for line and column numbers
+	// Everything after third colon is content
+
+	firstColon := strings.Index(line, ":")
+	if firstColon < 0 {
+		return "", 0, 0, ""
+	}
+
+	rest := line[firstColon+1:]
+	secondColon := strings.Index(rest, ":")
+	if secondColon < 0 {
+		return "", 0, 0, ""
+	}
+
+	lineStr := rest[:secondColon]
+	rest = rest[secondColon+1:]
+
+	thirdColon := strings.Index(rest, ":")
+	if thirdColon < 0 {
+		return "", 0, 0, ""
+	}
+
+	colStr := rest[:thirdColon]
+	content = rest[thirdColon+1:]
+
+	lineNo, err1 := strconv.Atoi(lineStr)
+	colNo, err2 := strconv.Atoi(colStr)
+	if err1 != nil || err2 != nil {
+		return "", 0, 0, ""
+	}
+
+	return line[:firstColon], lineNo, colNo, content
 }
 
 // ripgrepNotFoundError indicates rg is not installed.

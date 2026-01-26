@@ -145,3 +145,35 @@ func TestPartialMouseSeqRegex(t *testing.T) {
 		}
 	}
 }
+
+func TestOutputBuffer_StripTruncatedMouseSequence(t *testing.T) {
+	buf := NewOutputBuffer(100)
+
+	// Truncated mouse sequence missing trailing M (captured mid-transmission)
+	content := "prompt> [<65;103;31"
+	buf.Write(content)
+
+	result := buf.String()
+	if strings.Contains(result, "[<65;103;31") {
+		t.Error("expected truncated mouse sequence to be stripped")
+	}
+	if !strings.Contains(result, "prompt> ") {
+		t.Error("expected surrounding content to be preserved")
+	}
+}
+
+func TestOutputBuffer_StripPartialMouseSequenceWithTerminator(t *testing.T) {
+	buf := NewOutputBuffer(100)
+
+	// Partial mouse sequence (no ESC) with terminator
+	content := "prompt> [<65;103;31M"
+	buf.Write(content)
+
+	result := buf.String()
+	if strings.Contains(result, "[<65;103;31M") {
+		t.Error("expected partial mouse sequence to be stripped")
+	}
+	if !strings.Contains(result, "prompt> ") {
+		t.Error("expected surrounding content to be preserved")
+	}
+}

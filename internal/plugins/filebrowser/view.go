@@ -195,8 +195,9 @@ func (p *Plugin) renderNormalPanes() string {
 	p.calculatePaneWidths()
 
 	// Determine if panes are active based on focus
+	// Content search mode focuses the preview pane since we're searching file content
 	treeActive := p.activePane == PaneTree && !p.searchMode && !p.contentSearchMode
-	previewActive := p.activePane == PanePreview && !p.searchMode && !p.contentSearchMode
+	previewActive := p.activePane == PanePreview && !p.searchMode || p.contentSearchMode
 
 	treeContent := p.renderTreePane(innerHeight)
 	previewContent := p.renderPreviewPane(innerHeight)

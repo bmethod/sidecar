@@ -585,17 +585,25 @@ func (p *Plugin) handleProjectSearchClick(action mouse.MouseAction) (*Plugin, te
 		return plug.(*Plugin), cmd
 	}
 
+	// Single click on file header: toggle collapse/expand
 	if fileIdx, ok := parseProjectSearchFileID(action.Region.ID); ok {
 		if flatIdx := p.findFlatIndexForFile(fileIdx); flatIdx >= 0 {
 			state.Cursor = flatIdx
 		}
+		if fileIdx >= 0 && fileIdx < len(state.Results) {
+			state.Results[fileIdx].Collapsed = !state.Results[fileIdx].Collapsed
+		}
 		return p, nil
 	}
+
+	// Single click on match: open file in preview
 	if fileIdx, matchIdx, ok := parseProjectSearchMatchID(action.Region.ID); ok {
 		if flatIdx := p.findFlatIndexForMatch(fileIdx, matchIdx); flatIdx >= 0 {
 			state.Cursor = flatIdx
 		}
-		return p, nil
+		// Open the result in preview
+		plug, cmd := p.openProjectSearchResult()
+		return plug.(*Plugin), cmd
 	}
 
 	return p, nil
@@ -613,16 +621,23 @@ func (p *Plugin) handleProjectSearchDoubleClick(action mouse.MouseAction) (*Plug
 		return p, nil
 	}
 
+	// Double click on file header: open first match in external editor
 	if fileIdx, ok := parseProjectSearchFileID(action.Region.ID); ok {
-		if flatIdx := p.findFlatIndexForFile(fileIdx); flatIdx >= 0 {
-			state.Cursor = flatIdx
-		}
 		if fileIdx >= 0 && fileIdx < len(state.Results) {
-			state.Results[fileIdx].Collapsed = !state.Results[fileIdx].Collapsed
+			file := state.Results[fileIdx]
+			lineNo := 0
+			if len(file.Matches) > 0 {
+				lineNo = file.Matches[0].LineNo
+			}
+			p.projectSearchMode = false
+			p.projectSearchState = nil
+			p.clearProjectSearchModal()
+			return p, p.openFileAtLine(file.Path, lineNo)
 		}
 		return p, nil
 	}
 
+	// Double click on match: open in external editor
 	if fileIdx, matchIdx, ok := parseProjectSearchMatchID(action.Region.ID); ok {
 		if fileIdx >= 0 && fileIdx < len(state.Results) {
 			file := state.Results[fileIdx]
@@ -631,8 +646,7 @@ func (p *Plugin) handleProjectSearchDoubleClick(action mouse.MouseAction) (*Plug
 				p.projectSearchMode = false
 				p.projectSearchState = nil
 				p.clearProjectSearchModal()
-				cmd := p.openTabAtLine(file.Path, match.LineNo, TabOpenReplace)
-				return p, tea.Batch(cmd, p.openFileAtLine(file.Path, match.LineNo))
+				return p, p.openFileAtLine(file.Path, match.LineNo)
 			}
 		}
 	}

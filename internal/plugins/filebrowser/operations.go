@@ -601,17 +601,10 @@ func (p *Plugin) selectQuickOpenMatch() (plugin.Plugin, tea.Cmd) {
 	p.quickOpenMatches = nil
 	p.quickOpenCursor = 0
 
-	// Find the file in tree and expand parents
-	var targetNode *FileNode
-	p.walkTree(p.tree.Root, func(node *FileNode) {
-		if node.Path == match.Path {
-			targetNode = node
-		}
-	})
+	// Find the file in tree by walking down the path (efficient)
+	targetNode := p.findAndExpandPath(match.Path)
 
 	if targetNode != nil {
-		// Expand parents to make visible
-		p.expandParents(targetNode)
 		p.tree.Flatten()
 
 		// Move tree cursor to file
@@ -654,17 +647,10 @@ func (p *Plugin) openProjectSearchResult() (plugin.Plugin, tea.Cmd) {
 	p.projectSearchState = nil
 	p.clearProjectSearchModal()
 
-	// Find the file in tree and expand parents
-	var targetNode *FileNode
-	p.walkTree(p.tree.Root, func(node *FileNode) {
-		if node.Path == path {
-			targetNode = node
-		}
-	})
+	// Find the file in tree by walking down the path (efficient - only loads needed dirs)
+	targetNode := p.findAndExpandPath(path)
 
 	if targetNode != nil {
-		// Expand parents to make visible
-		p.expandParents(targetNode)
 		p.tree.Flatten()
 
 		// Move tree cursor to file
@@ -692,6 +678,43 @@ func (p *Plugin) openProjectSearchResult() (plugin.Plugin, tea.Cmd) {
 			}
 		}
 	}
+
+	return p, cmd
+}
+
+// openProjectSearchResultInNewTab opens the selected search result in a new tab.
+func (p *Plugin) openProjectSearchResultInNewTab() (plugin.Plugin, tea.Cmd) {
+	state := p.projectSearchState
+	if state == nil || len(state.Results) == 0 {
+		return p, nil
+	}
+
+	path, lineNo := state.GetSelectedFile()
+	if path == "" {
+		return p, nil
+	}
+
+	// Close project search
+	p.projectSearchMode = false
+	p.projectSearchState = nil
+	p.clearProjectSearchModal()
+
+	// Find the file in tree by walking down the path
+	targetNode := p.findAndExpandPath(path)
+
+	if targetNode != nil {
+		p.tree.Flatten()
+
+		// Move tree cursor to file
+		if idx := p.tree.IndexOf(targetNode); idx >= 0 {
+			p.treeCursor = idx
+			p.ensureTreeCursorVisible()
+		}
+	}
+
+	// Load preview in new tab
+	p.activePane = PanePreview
+	cmd := p.openTabAtLine(path, lineNo, TabOpenNew)
 
 	return p, cmd
 }
@@ -909,6 +932,51 @@ func (p *Plugin) updateSearchMatches() {
 	}
 
 	p.searchCursor = 0
+}
+
+// findAndExpandPath finds a file by path, expanding only the directories along the way.
+// This is much faster than walkTree for deep paths since it only loads needed directories.
+func (p *Plugin) findAndExpandPath(path string) *FileNode {
+	if p.tree == nil || p.tree.Root == nil || path == "" {
+		return nil
+	}
+
+	// Split path into components
+	parts := strings.Split(path, string(filepath.Separator))
+	if len(parts) == 0 {
+		return nil
+	}
+
+	// Walk down the tree following the path
+	current := p.tree.Root
+	for i, part := range parts {
+		// Load children if not already loaded
+		if len(current.Children) == 0 && current.IsDir {
+			_ = p.tree.loadChildren(current)
+		}
+
+		// Find the matching child
+		var found *FileNode
+		for _, child := range current.Children {
+			if child.Name == part {
+				found = child
+				break
+			}
+		}
+
+		if found == nil {
+			return nil // Path not found in tree
+		}
+
+		// Expand directory if it's not the final component
+		if found.IsDir && i < len(parts)-1 {
+			found.IsExpanded = true
+		}
+
+		current = found
+	}
+
+	return current
 }
 
 // walkTree recursively visits all nodes in the tree.

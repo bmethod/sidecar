@@ -15,8 +15,9 @@ var terminalModeRegex = regexp.MustCompile(`\x1b\[\?(?:1000|1002|1003|1005|1006|
 
 // partialMouseEscapeRegex matches SGR mouse sequences that lost their ESC prefix (td-791865).
 // This happens when the ESC byte is consumed by readline/ZLE but the rest of the sequence
-// is printed as literal text in the terminal. Defense-in-depth for the input-side filter.
-var partialMouseEscapeRegex = regexp.MustCompile(`\[<\d+;\d+;\d+[Mm]`)
+// is printed as literal text in the terminal. Also handles truncated sequences missing
+// the trailing M/m (e.g., "[<65;103;31" captured mid-transmission).
+var partialMouseEscapeRegex = regexp.MustCompile(`\[<\d+;\d+;\d+[Mm]?`)
 
 // ViewMode represents the current view state.
 type ViewMode int

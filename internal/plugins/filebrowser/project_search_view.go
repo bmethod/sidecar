@@ -202,8 +202,10 @@ func (p *Plugin) projectSearchOptionsUpdate(msg tea.Msg, focusID string) (string
 		return "", nil
 	}
 
+	// Note: Space is NOT handled here - it should always add to the search query.
+	// Options can be toggled via Enter, mouse click, or alt+r/c/w shortcuts.
 	switch keyMsg.String() {
-	case " ":
+	case "enter":
 		return focusID, nil
 	}
 
@@ -217,23 +219,34 @@ func (p *Plugin) projectSearchResultsSection() modal.Section {
 			return modal.RenderedSection{}
 		}
 
+		maxVisible := p.projectSearchMaxVisible()
+
+		// Helper to pad content to minimum height so modal doesn't jump in size
+		// Uses " " instead of "" so lines aren't trimmed by measureHeight
+		padToMinHeight := func(content string) string {
+			lines := strings.Split(content, "\n")
+			for len(lines) < maxVisible {
+				lines = append(lines, " ")
+			}
+			return strings.Join(lines, "\n")
+		}
+
 		if state.IsSearching {
-			return modal.RenderedSection{Content: styles.Muted.Render("Searching...")}
+			return modal.RenderedSection{Content: padToMinHeight(styles.Muted.Render("Searching..."))}
 		}
 		if state.Error != "" {
-			return modal.RenderedSection{Content: styles.StatusDeleted.Render(state.Error)}
+			return modal.RenderedSection{Content: padToMinHeight(styles.StatusDeleted.Render(state.Error))}
 		}
 		if len(state.Results) == 0 {
 			if state.Query != "" {
-				return modal.RenderedSection{Content: styles.Muted.Render("No matches found")}
+				return modal.RenderedSection{Content: padToMinHeight(styles.Muted.Render("No matches found"))}
 			}
-			return modal.RenderedSection{Content: styles.Muted.Render("Type to search project files...")}
+			return modal.RenderedSection{Content: padToMinHeight(styles.Muted.Render("Type to search project files..."))}
 		}
 
-		maxVisible := p.projectSearchMaxVisible()
 		flatLen := state.FlatLen()
 		if flatLen == 0 {
-			return modal.RenderedSection{Content: styles.Muted.Render("No matches found")}
+			return modal.RenderedSection{Content: padToMinHeight(styles.Muted.Render("No matches found"))}
 		}
 
 		if state.Cursor >= state.ScrollOffset+maxVisible {
@@ -263,7 +276,7 @@ func (p *Plugin) projectSearchResultsSection() modal.Section {
 					ID:      itemID,
 					OffsetX: 0,
 					OffsetY: lineY,
-					Width:   ansi.StringWidth(line),
+					Width:   contentWidth, // Full width for hover detection
 					Height:  1,
 				})
 				lineY++
@@ -283,7 +296,7 @@ func (p *Plugin) projectSearchResultsSection() modal.Section {
 							ID:      itemID,
 							OffsetX: 0,
 							OffsetY: lineY,
-							Width:   ansi.StringWidth(line),
+							Width:   contentWidth, // Full width for hover detection
 							Height:  1,
 						})
 						lineY++
@@ -300,8 +313,15 @@ func (p *Plugin) projectSearchResultsSection() modal.Section {
 			}
 		}
 
+		// Pad to minimum height so modal doesn't jump in size
+		// Uses " " instead of "" so lines aren't trimmed by measureHeight
+		for len(lines) < maxVisible {
+			lines = append(lines, " ")
+		}
+		content := strings.Join(lines, "\n")
+
 		return modal.RenderedSection{
-			Content:    strings.Join(lines, "\n"),
+			Content:    content,
 			Focusables: focusables,
 		}
 	}, nil)
@@ -371,16 +391,21 @@ func (p *Plugin) renderSearchFileHeader(file SearchFileResult, fileIdx int, sele
 		path = ui.TruncateStart(path, availableWidth)
 	}
 
-	line := fmt.Sprintf("%s%s%s",
+	if selected || hovered {
+		// Build plain text version for full-width highlight
+		plainLine := icon + path + matchCount
+		// Pad to full width
+		if len(plainLine) < width {
+			plainLine += strings.Repeat(" ", width-len(plainLine))
+		}
+		return styles.ListItemSelected.Render(plainLine)
+	}
+
+	return fmt.Sprintf("%s%s%s",
 		styles.FileBrowserIcon.Render(icon),
 		styles.FileBrowserDir.Render(path),
 		styles.Muted.Render(matchCount),
 	)
-
-	if selected || hovered {
-		return styles.ListItemSelected.Render(line)
-	}
-	return line
 }
 
 // renderSearchMatchLine renders a single match line.
@@ -411,18 +436,47 @@ func (p *Plugin) renderSearchMatchLine(match SearchMatch, matchIdx int, selected
 
 	lineText, hlStart, hlEnd := ui.TruncateMid(lineText, availableWidth, runeStart, runeEnd)
 
-	highlightedLine := highlightMatchInLineRunes(lineText, hlStart, hlEnd)
+	if selected || hovered {
+		// Build plain text for full-width highlight (keeps match visible within selection)
+		plainLine := indent + lineNum + lineText
+		// Pad to full width
+		if len(plainLine) < width {
+			plainLine += strings.Repeat(" ", width-len(plainLine))
+		}
+		// Highlight the match within the plain text
+		matchStart := len(indent) + len(lineNum) + hlStart
+		matchEnd := len(indent) + len(lineNum) + hlEnd
+		return highlightMatchInSelection(plainLine, matchStart, matchEnd)
+	}
 
-	line := fmt.Sprintf("%s%s%s",
+	highlightedLine := highlightMatchInLineRunes(lineText, hlStart, hlEnd)
+	return fmt.Sprintf("%s%s%s",
 		indent,
 		styles.FileBrowserLineNumber.Render(lineNum),
 		highlightedLine,
 	)
+}
 
-	if selected || hovered {
+// highlightMatchInSelection applies selection style with embedded match highlight.
+func highlightMatchInSelection(line string, matchStart, matchEnd int) string {
+	if matchStart < 0 {
+		matchStart = 0
+	}
+	if matchEnd > len(line) {
+		matchEnd = len(line)
+	}
+	if matchStart >= matchEnd || matchStart >= len(line) {
 		return styles.ListItemSelected.Render(line)
 	}
-	return line
+
+	// Split the line and apply styles
+	before := line[:matchStart]
+	match := line[matchStart:matchEnd]
+	after := line[matchEnd:]
+
+	return styles.ListItemSelected.Render(before) +
+		styles.SearchMatchCurrent.Render(match) +
+		styles.ListItemSelected.Render(after)
 }
 
 // highlightMatchInLineRunes applies highlighting using rune positions (safe for Unicode).

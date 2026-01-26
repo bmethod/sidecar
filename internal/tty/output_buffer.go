@@ -18,8 +18,9 @@ var (
 
 	// partialMouseEscapeRegex matches SGR mouse sequences that lost their ESC prefix.
 	// This happens when the ESC byte is consumed by readline/ZLE but the rest of the sequence
-	// is printed as literal text in the terminal.
-	partialMouseEscapeRegex = regexp.MustCompile(`\[<\d+;\d+;\d+[Mm]`)
+	// is printed as literal text in the terminal. Also handles truncated sequences missing
+	// the trailing M/m (e.g., "[<65;103;31" captured mid-transmission).
+	partialMouseEscapeRegex = regexp.MustCompile(`\[<\d+;\d+;\d+[Mm]?`)
 
 	// partialMouseSeqRegex matches SGR mouse sequences that lost their ESC prefix
 	// due to split-read timing in terminal input.

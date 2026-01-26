@@ -22,7 +22,7 @@ func (p *Plugin) handleKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	}
 
 	// Project search can be triggered from any context (except when already open)
-	if key == "ctrl+s" && !p.projectSearchMode && !p.quickOpenMode {
+	if key == "f" && !p.projectSearchMode && !p.quickOpenMode {
 		return p.openProjectSearch()
 	}
 
@@ -843,7 +843,7 @@ func (p *Plugin) handleContentSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 		return p, nil
 	}
 
-	// Phase 2: Search committed - n/N navigate matches, j/k exit and navigate tree
+	// Phase 2: Search committed - n/N navigate matches, j/k scroll preview
 	switch key {
 	case "n":
 		if len(p.contentSearchMatches) > 0 {
@@ -859,27 +859,42 @@ func (p *Plugin) handleContentSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 			p.scrollToContentMatch()
 		}
 	case "j", "down":
-		// Move to next file, keep search active
-		if p.treeCursor < p.tree.Len()-1 {
-			p.treeCursor++
-			p.ensureTreeCursorVisible()
-			p.contentSearchMatches = nil
-			p.contentSearchCursor = 0
-			return p, p.loadPreviewForCursor()
+		// Scroll preview down one line
+		visibleHeight := p.height - 4
+		maxScroll := len(p.previewLines) - visibleHeight
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.previewScroll < maxScroll {
+			p.previewScroll++
 		}
 	case "k", "up":
-		// Move to previous file, keep search active
-		if p.treeCursor > 0 {
-			p.treeCursor--
-			p.ensureTreeCursorVisible()
-			p.contentSearchMatches = nil
-			p.contentSearchCursor = 0
-			return p, p.loadPreviewForCursor()
+		// Scroll preview up one line
+		if p.previewScroll > 0 {
+			p.previewScroll--
 		}
 	case "enter":
 		// Exit search, keep position at current match
 		p.contentSearchMode = false
 		p.contentSearchCommitted = false
+	case "ctrl+d":
+		// Half-page scroll down while keeping search active
+		visibleHeight := p.height - 4
+		maxScroll := len(p.previewLines) - visibleHeight
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		p.previewScroll += visibleHeight / 2
+		if p.previewScroll > maxScroll {
+			p.previewScroll = maxScroll
+		}
+	case "ctrl+u":
+		// Half-page scroll up while keeping search active
+		visibleHeight := p.height - 4
+		p.previewScroll -= visibleHeight / 2
+		if p.previewScroll < 0 {
+			p.previewScroll = 0
+		}
 	}
 
 	return p, nil
@@ -941,6 +956,15 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 		return p, nil
 	}
 
+	// Handle enter before modal to ensure it opens the result at state.Cursor
+	// (modal's focus might be on an option button, but we want to open the selected result)
+	if key == "enter" && state != nil && len(state.Results) > 0 {
+		return p.openProjectSearchResult()
+	}
+	if key == "shift+enter" && state != nil && len(state.Results) > 0 {
+		return p.openProjectSearchResultInNewTab()
+	}
+
 	action, cmd := p.projectSearchModal.HandleKey(msg)
 	if action == "cancel" {
 		p.projectSearchMode = false
@@ -982,45 +1006,46 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 		p.projectSearchState = nil
 		p.clearProjectSearchModal()
 
-	case "enter":
-		// Open selected file/match
-		if state != nil && len(state.Results) > 0 {
-			return p.openProjectSearchResult()
-		}
+	// Note: enter and shift+enter are handled before modal.HandleKey above
 
 	case "left":
-		// Collapse file group at cursor
+		// Collapse file group containing cursor's match
 		if state != nil {
-			if fileIdx, _, isFile := state.FlatItem(state.Cursor); isFile && fileIdx >= 0 && fileIdx < len(state.Results) {
+			fileIdx, _, _ := state.FlatItem(state.Cursor)
+			if fileIdx >= 0 && fileIdx < len(state.Results) {
 				state.Results[fileIdx].Collapsed = true
+				// After collapse, snap to nearest visible match
+				state.Cursor = state.NearestMatchIndex(state.Cursor)
 			}
 		}
 
 	case "right":
-		// Expand file group at cursor
+		// Expand file group containing cursor's match
 		if state != nil {
-			if fileIdx, _, isFile := state.FlatItem(state.Cursor); isFile && fileIdx >= 0 && fileIdx < len(state.Results) {
+			fileIdx, _, _ := state.FlatItem(state.Cursor)
+			if fileIdx >= 0 && fileIdx < len(state.Results) {
 				state.Results[fileIdx].Collapsed = false
+				// After expand, snap to first match in that file
+				state.Cursor = state.NearestMatchIndex(state.Cursor)
 			}
 		}
 
 	case "down", "ctrl+n":
 		if state != nil {
-			maxIdx := state.FlatLen() - 1
-			if state.Cursor < maxIdx {
-				state.Cursor++
-			}
+			// Skip file headers, only navigate between matches
+			state.Cursor = state.NextMatchIndex()
 		}
 
 	case "up", "ctrl+p":
-		if state != nil && state.Cursor > 0 {
-			state.Cursor--
+		if state != nil {
+			// Skip file headers, only navigate between matches
+			state.Cursor = state.PrevMatchIndex()
 		}
 
 	case "ctrl+g":
-		// Go to top (ctrl+g to avoid conflict with typing 'g')
+		// Go to first match (ctrl+g to avoid conflict with typing 'g')
 		if state != nil {
-			state.Cursor = 0
+			state.Cursor = state.FirstMatchIndex()
 			state.ScrollOffset = 0
 		}
 
@@ -1038,7 +1063,7 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 		}
 
 	case "ctrl+d":
-		// Page down
+		// Page down, snap to nearest match
 		if state != nil {
 			state.Cursor += 10
 			maxIdx := state.FlatLen() - 1
@@ -1048,15 +1073,19 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 			if state.Cursor < 0 {
 				state.Cursor = 0
 			}
+			// Snap to nearest match (skip file headers)
+			state.Cursor = state.NearestMatchIndex(state.Cursor)
 		}
 
 	case "ctrl+u":
-		// Page up
+		// Page up, snap to nearest match
 		if state != nil {
 			state.Cursor -= 10
 			if state.Cursor < 0 {
 				state.Cursor = 0
 			}
+			// Snap to nearest match (skip file headers)
+			state.Cursor = state.NearestMatchIndex(state.Cursor)
 		}
 
 	case "alt+r":
@@ -1078,9 +1107,11 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 			if state.Query == "" {
 				state.Results = nil
 				state.Error = ""
+				state.DebounceVersion++ // Cancel any pending search
 			} else {
 				state.IsSearching = true
-				return p, RunProjectSearch(p.ctx.WorkDir, state)
+				state.DebounceVersion++
+				return p, scheduleProjectSearch(state.DebounceVersion, state.Query)
 			}
 		}
 
@@ -1089,7 +1120,8 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 		if state != nil && len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
 			state.Query += key
 			state.IsSearching = true
-			return p, RunProjectSearch(p.ctx.WorkDir, state)
+			state.DebounceVersion++
+			return p, scheduleProjectSearch(state.DebounceVersion, state.Query)
 		}
 	}
 
@@ -1104,6 +1136,7 @@ func (p *Plugin) toggleProjectSearchOption(state *ProjectSearchState, option *bo
 	*option = !*option
 	if state.Query != "" {
 		state.IsSearching = true
+		state.DebounceVersion++ // Cancel any pending debounced search
 		return p, RunProjectSearch(p.ctx.WorkDir, state)
 	}
 	return p, nil

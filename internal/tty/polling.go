@@ -13,7 +13,7 @@ const (
 	PollingDecayMedium = 200 * time.Millisecond
 
 	// PollingDecaySlow is the polling interval after extended inactivity.
-	PollingDecaySlow = 500 * time.Millisecond
+	PollingDecaySlow = 250 * time.Millisecond
 
 	// KeystrokeDebounce delays polling after keystrokes to batch rapid typing.
 	// Allows typing bursts to coalesce into fewer polls, reducing CPU usage.
