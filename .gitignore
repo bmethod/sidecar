@@ -61,3 +61,6 @@ website/build/
 # Sidecar workspace state files
 .sidecar-start.sh
 screenshots/
+
+# Sidecar worktree state files
+.sidecar/
