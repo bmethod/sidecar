@@ -626,29 +626,38 @@ func TestRenderMatchLine(t *testing.T) {
 	}
 }
 
-func TestHighlightMatch(t *testing.T) {
+func TestHighlightMatchRunes(t *testing.T) {
 	text := "This is a test string"
 
-	// Valid match
-	output := highlightMatch(text, 10, 14)
+	// Valid match (rune indices, same as byte indices for ASCII)
+	output := highlightMatchRunes(text, 10, 14)
 	if output == "" {
-		t.Error("highlightMatch should produce non-empty output")
+		t.Error("highlightMatchRunes should produce non-empty output")
 	}
 
 	// Invalid ranges should return styled text without panic
-	output = highlightMatch(text, -1, 5)
+	output = highlightMatchRunes(text, -1, 5)
 	if output == "" {
-		t.Error("highlightMatch with negative start should produce output")
+		t.Error("highlightMatchRunes with negative start should produce output")
 	}
 
-	output = highlightMatch(text, 0, 100)
+	output = highlightMatchRunes(text, 0, 100)
 	if output == "" {
-		t.Error("highlightMatch with end beyond length should produce output")
+		t.Error("highlightMatchRunes with end beyond length should produce output")
 	}
 
-	output = highlightMatch(text, 10, 5) // start > end
+	output = highlightMatchRunes(text, 10, 5) // start > end
 	if output == "" {
-		t.Error("highlightMatch with invalid range should produce output")
+		t.Error("highlightMatchRunes with invalid range should produce output")
+	}
+
+	// Test with UTF-8 multi-byte characters
+	utf8Text := "Hello 世界 emoji 🎉 test"
+	// "Hello " = 6 chars, "世界" = 2 chars (but 6 bytes each), " emoji " = 7 chars, "🎉" = 1 char (4 bytes)
+	// Rune indices: H=0, e=1, l=2, l=3, o=4, ' '=5, 世=6, 界=7, ' '=8, e=9...
+	output = highlightMatchRunes(utf8Text, 6, 8) // should highlight "世界"
+	if output == "" {
+		t.Error("highlightMatchRunes with UTF-8 should produce non-empty output")
 	}
 }
 

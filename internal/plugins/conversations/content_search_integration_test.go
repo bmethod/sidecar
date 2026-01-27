@@ -163,11 +163,11 @@ func TestContentSearchToggleOptions(t *testing.T) {
 		t.Error("Regex should be on after ctrl+r")
 	}
 
-	// Toggle case sensitivity with ctrl+c
-	result, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// Toggle case sensitivity with alt+c
+	result, _ = p.handleContentSearchKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}, Alt: true})
 	p = result.(*Plugin)
 	if !p.contentSearchState.CaseSensitive {
-		t.Error("Case sensitivity should be on after ctrl+c")
+		t.Error("Case sensitivity should be on after alt+c")
 	}
 }
 

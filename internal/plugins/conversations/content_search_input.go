@@ -84,7 +84,7 @@ func (p *Plugin) handleContentSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 		}
 		return p, nil
 
-	case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))):
+	case key.Matches(msg, key.NewBinding(key.WithKeys("alt+c"))):
 		// Toggle case sensitivity
 		if p.contentSearchState != nil {
 			p.contentSearchState.CaseSensitive = !p.contentSearchState.CaseSensitive

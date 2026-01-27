@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -110,7 +111,7 @@ func contentSearchOptionsSection(state *ContentSearchState) modal.Section {
 			sb.WriteString(styles.Subtle.Render(" case"))
 
 			sb.WriteString("  ")
-			sb.WriteString(styles.Subtle.Render("(ctrl+r / ctrl+c to toggle)"))
+			sb.WriteString(styles.Subtle.Render("(ctrl+r / alt+c to toggle)"))
 
 			return modal.RenderedSection{Content: sb.String()}
 		},
@@ -411,7 +412,7 @@ func renderMessageHeader(msg adapter.MessageMatch, selected bool, maxWidth int) 
 
 // renderMatchLine renders a single match line within a message.
 // Format:       |  Line N: ...text with **highlighted** match...
-func renderMatchLine(match adapter.ContentMatch, query string, selected bool, maxWidth int, sessionIdx, msgIdx, matchIdx int) string {
+func renderMatchLine(match adapter.ContentMatch, _ string, selected bool, maxWidth int, _, _, _ int) string {
 	var sb strings.Builder
 
 	indent := "      " // 6 spaces for matches under messages
@@ -429,16 +430,24 @@ func renderMatchLine(match adapter.ContentMatch, query string, selected bool, ma
 		contentWidth = 20
 	}
 
+	// Convert byte indices to rune indices for proper UTF-8 handling
+	// match.ColStart and match.ColEnd are byte indices from regexp
+	runes := []rune(lineText)
+	runeLen := len(runes)
+
+	colStart := byteToRuneIndex(lineText, match.ColStart)
+	colEnd := byteToRuneIndex(lineText, match.ColEnd)
+
 	// Apply context window around match
+	displayRunes := runes
 	displayText := lineText
-	colStart := match.ColStart
-	colEnd := match.ColEnd
 
 	// If line is too long, show context around the match
-	if len(displayText) > contentWidth {
+	if runeLen > contentWidth {
 		// Calculate context window
 		contextBefore := 15
-		contextAfter := contentWidth - (colEnd - colStart) - contextBefore - 6 // 6 for "..."
+		matchLen := colEnd - colStart
+		contextAfter := contentWidth - matchLen - contextBefore - 6 // 6 for "..."
 		if contextAfter < 10 {
 			contextAfter = 10
 		}
@@ -455,17 +464,18 @@ func renderMatchLine(match adapter.ContentMatch, query string, selected bool, ma
 			prefix = "..."
 		}
 
-		if end > len(displayText) {
-			end = len(displayText)
+		if end > runeLen {
+			end = runeLen
 		} else {
 			suffix = "..."
 		}
 
 		// Adjust column positions for the new substring
-		newColStart := colStart - start + len(prefix)
-		newColEnd := colEnd - start + len(prefix)
+		newColStart := colStart - start + utf8.RuneCountInString(prefix)
+		newColEnd := colEnd - start + utf8.RuneCountInString(prefix)
 
-		displayText = prefix + displayText[start:end] + suffix
+		displayRunes = runes[start:end]
+		displayText = prefix + string(displayRunes) + suffix
 		colStart = newColStart
 		colEnd = newColEnd
 
@@ -473,16 +483,20 @@ func renderMatchLine(match adapter.ContentMatch, query string, selected bool, ma
 		if colStart < 0 {
 			colStart = 0
 		}
-		if colEnd > len(displayText) {
-			colEnd = len(displayText)
+		displayRuneLen := utf8.RuneCountInString(displayText)
+		if colEnd > displayRuneLen {
+			colEnd = displayRuneLen
 		}
 	}
 
 	// Final truncation if still too long
-	if len(displayText) > contentWidth {
-		displayText = displayText[:contentWidth-3] + "..."
-		if colEnd > len(displayText) {
-			colEnd = len(displayText)
+	displayRuneLen := utf8.RuneCountInString(displayText)
+	if displayRuneLen > contentWidth {
+		displayRunes := []rune(displayText)
+		displayText = string(displayRunes[:contentWidth-3]) + "..."
+		displayRuneLen = utf8.RuneCountInString(displayText)
+		if colEnd > displayRuneLen {
+			colEnd = displayRuneLen
 		}
 	}
 
@@ -501,17 +515,21 @@ func renderMatchLine(match adapter.ContentMatch, query string, selected bool, ma
 	sb.WriteString(indent)
 	sb.WriteString(styles.Muted.Render(linePrefix))
 
-	// Highlight the matched portion
-	highlightedText := highlightMatch(displayText, colStart, colEnd)
+	// Highlight the matched portion (using rune indices)
+	highlightedText := highlightMatchRunes(displayText, colStart, colEnd)
 	sb.WriteString(highlightedText)
 
 	return sb.String()
 }
 
-// highlightMatch adds styling to the matched portion of text.
-// Returns styled text with the match portion highlighted.
-func highlightMatch(text string, colStart, colEnd int) string {
-	if colStart < 0 || colEnd < 0 || colStart >= len(text) || colEnd > len(text) || colStart >= colEnd {
+// highlightMatchRunes adds styling to the matched portion of text using rune indices.
+// This is safe for multi-byte UTF-8 characters (emojis, CJK, etc.).
+// colStart and colEnd are rune indices, not byte indices.
+func highlightMatchRunes(text string, colStart, colEnd int) string {
+	runes := []rune(text)
+	runeLen := len(runes)
+
+	if colStart < 0 || colEnd < 0 || colStart >= runeLen || colEnd > runeLen || colStart >= colEnd {
 		// Invalid range, return text with muted styling
 		return styles.Muted.Render(text)
 	}
@@ -520,19 +538,19 @@ func highlightMatch(text string, colStart, colEnd int) string {
 
 	// Before match
 	if colStart > 0 {
-		sb.WriteString(styles.Muted.Render(text[:colStart]))
+		sb.WriteString(styles.Muted.Render(string(runes[:colStart])))
 	}
 
 	// Matched portion with highlight
 	matchStyle := lipgloss.NewStyle().
-		Background(styles.Warning). // Yellow/amber background
+		Background(styles.Warning).   // Yellow/amber background
 		Foreground(styles.BgPrimary). // Dark text for contrast
 		Bold(true)
-	sb.WriteString(matchStyle.Render(text[colStart:colEnd]))
+	sb.WriteString(matchStyle.Render(string(runes[colStart:colEnd])))
 
 	// After match
-	if colEnd < len(text) {
-		sb.WriteString(styles.Muted.Render(text[colEnd:]))
+	if colEnd < runeLen {
+		sb.WriteString(styles.Muted.Render(string(runes[colEnd:])))
 	}
 
 	return sb.String()
@@ -581,3 +599,17 @@ func formatTimeAgo(t time.Time) string {
 	// Older than a month, show date
 	return t.Local().Format("Jan 02")
 }
+
+// byteToRuneIndex converts a byte index to a rune index in a string.
+// If the byte index is invalid or points to the middle of a multi-byte character,
+// it returns the nearest valid rune index.
+func byteToRuneIndex(s string, byteIdx int) int {
+	if byteIdx <= 0 {
+		return 0
+	}
+	if byteIdx >= len(s) {
+		return utf8.RuneCountInString(s)
+	}
+	return utf8.RuneCountInString(s[:byteIdx])
+}
+

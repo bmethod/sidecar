@@ -858,7 +858,7 @@ func (p *Plugin) Commands() []plugin.Command {
 			{ID: "navigate", Name: "Nav", Description: "Navigate j/k", Category: plugin.CategoryNavigation, Context: "conversations-content-search", Priority: 3},
 			{ID: "expand", Name: "Expand", Description: "Toggle space", Category: plugin.CategoryView, Context: "conversations-content-search", Priority: 4},
 			{ID: "regex", Name: "Regex", Description: "Toggle ctrl+r", Category: plugin.CategoryView, Context: "conversations-content-search", Priority: 5},
-			{ID: "case", Name: "Case", Description: "Toggle ctrl+c", Category: plugin.CategoryView, Context: "conversations-content-search", Priority: 6},
+			{ID: "case", Name: "Case", Description: "Toggle alt+c", Category: plugin.CategoryView, Context: "conversations-content-search", Priority: 6},
 		}
 	}
 	if p.searchMode {
