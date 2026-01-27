@@ -103,7 +103,7 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
-      image: 'img/sidecar-social-card.jpg',
+      image: 'img/sidecar-logo.png',
       metadata: [
         {name: 'twitter:card', content: 'summary_large_image'},
         {name: 'twitter:image:alt', content: 'Sidecar - You might never open your editor again'},
