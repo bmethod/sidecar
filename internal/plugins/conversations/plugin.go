@@ -221,6 +221,15 @@ type Plugin struct {
 	resumeSkipPermissions bool
 	resumeFocus           int
 	resumeSession         *adapter.Session
+
+	// Content search state (td-6ac70a: cross-conversation search)
+	contentSearchMode  bool                // True when content search modal is open
+	contentSearchState *ContentSearchState // Content search state
+
+	// Pending scroll target after messages load (td-b74d9f)
+	// Uses message ID (not index) to handle pagination correctly
+	pendingScrollMsgID  string // Target message ID to scroll to after load ("" = none)
+	pendingScrollActive bool   // True when we have a pending scroll request
 }
 
 // msgLineRange tracks which screen lines a message occupies (after scroll).
@@ -372,6 +381,14 @@ func (p *Plugin) resetState() {
 	p.initialLoadDone = false
 	p.skeleton = ui.NewSkeleton(8, nil)
 	p.loadSettleToken = 0
+
+	// Content search state (td-6ac70a)
+	p.contentSearchMode = false
+	p.contentSearchState = nil
+
+	// Pending scroll state (td-b74d9f)
+	p.pendingScrollMsgID = ""
+	p.pendingScrollActive = false
 }
 
 // Init initializes the plugin with context.
@@ -457,12 +474,30 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case ui.SkeletonTickMsg:
 		// Forward tick to skeleton for animation (td-6cc19f)
-		return p, p.skeleton.Update(msg)
+		var cmds []tea.Cmd
+		if cmd := p.skeleton.Update(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		// Also forward to content search skeleton if modal is open (td-e740e4)
+		if p.contentSearchMode && p.contentSearchState != nil {
+			if cmd := p.contentSearchState.Skeleton.Update(msg); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		if len(cmds) > 0 {
+			return p, tea.Batch(cmds...)
+		}
+		return p, nil
 
 	case tea.MouseMsg:
 		return p.handleMouse(msg)
 
 	case tea.KeyMsg:
+		// Handle content search modal first if open (td-6ac70a)
+		if p.contentSearchMode {
+			return p.handleContentSearchKey(msg)
+		}
+
 		// Handle resume modal first if open (td-aa4136)
 		if p.showResumeModal {
 			cmd := p.handleResumeModalKeys(msg)
@@ -665,6 +700,41 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// hasOlderMsgs: true when there are messages beyond the current window (td-07fc795d)
 		p.hasOlderMsgs = (msg.Offset + len(msg.Messages)) < msg.TotalCount
 
+		// Process pending scroll request from content search (td-b74d9f)
+		// Uses message ID (not index) to handle pagination correctly
+		if p.pendingScrollActive && p.pendingScrollMsgID != "" {
+			p.pendingScrollActive = false
+			targetMsgID := p.pendingScrollMsgID
+			p.pendingScrollMsgID = ""
+
+			// Find the message by ID in the loaded messages
+			foundIdx := -1
+			for i, m := range p.messages {
+				if m.ID == targetMsgID {
+					foundIdx = i
+					break
+				}
+			}
+
+			// If found, scroll to it
+			if foundIdx >= 0 {
+				// Find the corresponding visible index (skip tool-result-only messages)
+				visibleIndices := p.visibleMessageIndices()
+				for i, idx := range visibleIndices {
+					if idx >= foundIdx {
+						p.messageCursor = idx
+						p.ensureMessageCursorVisible()
+						break
+					}
+					// If we're at the last visible index, use it
+					if i == len(visibleIndices)-1 {
+						p.messageCursor = idx
+						p.ensureMessageCursorVisible()
+					}
+				}
+			}
+		}
+
 		return p, nil
 
 	case WatchStartedMsg:
@@ -740,6 +810,44 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p, p.schedulePreviewLoad(p.selectedSession)
 		}
 		return p, nil
+
+	// Content search messages (td-6ac70a)
+	case ContentSearchDebounceMsg:
+		if p.contentSearchState != nil && msg.Version == p.contentSearchState.DebounceVersion {
+			return p, RunContentSearch(
+				msg.Query,
+				p.sessions,
+				p.adapters,
+				adapter.SearchOptions{
+					UseRegex:      p.contentSearchState.UseRegex,
+					CaseSensitive: p.contentSearchState.CaseSensitive,
+					MaxResults:    50,
+				},
+			)
+		}
+		return p, nil
+
+	case ContentSearchResultsMsg:
+		if p.contentSearchState != nil {
+			// Only accept results if query matches current query (td-5b9928: prevent stale results)
+			if msg.Query != p.contentSearchState.Query {
+				return p, nil // Discard stale results
+			}
+			p.contentSearchState.Results = msg.Results
+			p.contentSearchState.IsSearching = false
+			p.contentSearchState.Skeleton.Stop() // Stop skeleton animation (td-e740e4)
+			p.contentSearchState.Cursor = 0       // Reset cursor to first result
+			p.contentSearchState.ScrollOffset = 0 // Reset scroll
+			p.contentSearchState.TotalFound = msg.TotalMatches // (td-8e1a2b)
+			p.contentSearchState.Truncated = msg.Truncated     // (td-8e1a2b)
+			if msg.Error != nil {
+				p.contentSearchState.Error = msg.Error.Error()
+			} else {
+				p.contentSearchState.Error = ""
+			}
+		}
+		return p, nil
+
 	}
 
 	return p, nil
@@ -751,6 +859,13 @@ func (p *Plugin) View(width, height int) string {
 	p.height = height
 	// Note: sidebarWidth is calculated in renderTwoPane, not here,
 	// to avoid resetting drag-adjusted widths on every render
+
+	// Handle content search modal overlay (td-6ac70a, td-435ae6)
+	if p.contentSearchMode && p.contentSearchState != nil {
+		background := p.renderTwoPane()
+		modalContent := renderContentSearchModal(p.contentSearchState, width, height)
+		return ui.OverlayModal(background, modalContent, width, height)
+	}
 
 	// Handle resume modal overlay (td-aa4136)
 	if p.showResumeModal {
@@ -783,6 +898,17 @@ func (p *Plugin) SetFocused(f bool) { p.focused = f }
 
 // Commands returns the available commands.
 func (p *Plugin) Commands() []plugin.Command {
+	// Content search mode commands (td-6ac70a, td-2467e8: updated shortcuts)
+	if p.contentSearchMode {
+		return []plugin.Command{
+			{ID: "close", Name: "Close", Description: "Close search", Category: plugin.CategoryNavigation, Context: "conversations-content-search", Priority: 1},
+			{ID: "select", Name: "Select", Description: "Jump to result", Category: plugin.CategoryActions, Context: "conversations-content-search", Priority: 2},
+			{ID: "navigate", Name: "Nav", Description: "Navigate \u2191/\u2193", Category: plugin.CategoryNavigation, Context: "conversations-content-search", Priority: 3},
+			{ID: "expand", Name: "Expand", Description: "Toggle tab", Category: plugin.CategoryView, Context: "conversations-content-search", Priority: 4},
+			{ID: "regex", Name: "Regex", Description: "Toggle ctrl+r", Category: plugin.CategoryView, Context: "conversations-content-search", Priority: 5},
+			{ID: "case", Name: "Case", Description: "Toggle alt+c", Category: plugin.CategoryView, Context: "conversations-content-search", Priority: 6},
+		}
+	}
 	if p.searchMode {
 		return []plugin.Command{
 			{ID: "select", Name: "Select", Description: "Select search result", Category: plugin.CategoryActions, Context: "conversations-search", Priority: 1},
@@ -808,6 +934,7 @@ func (p *Plugin) Commands() []plugin.Command {
 			{ID: "toggle-view", Name: "View", Description: "Toggle conversation/turn view", Category: plugin.CategoryView, Context: "conversations-main", Priority: 1},
 			{ID: "detail", Name: "Detail", Description: "View turn details", Category: plugin.CategoryView, Context: "conversations-main", Priority: 2},
 			{ID: "expand", Name: "Expand", Description: "Expand selected item", Category: plugin.CategoryView, Context: "conversations-main", Priority: 3},
+			{ID: "content-search", Name: "Find", Description: "Search content (F)", Category: plugin.CategorySearch, Context: "conversations-main", Priority: 3},
 			{ID: "back", Name: "Back", Description: "Return to sidebar", Category: plugin.CategoryNavigation, Context: "conversations-main", Priority: 4},
 			{ID: "open", Name: "Open", Description: "Open in CLI", Category: plugin.CategoryActions, Context: "conversations-main", Priority: 5},
 			{ID: "yank", Name: "Yank", Description: "Yank turn content", Category: plugin.CategoryActions, Context: "conversations-main", Priority: 6},
@@ -823,6 +950,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "view-session", Name: "View", Description: "View session messages", Category: plugin.CategoryView, Context: "conversations-sidebar", Priority: 1},
 		{ID: "search", Name: "Search", Description: "Search conversations", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
 		{ID: "filter", Name: "Filter", Description: "Filter by project", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
+		{ID: "content-search", Name: "Find", Description: "Search content (F)", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
 		{ID: "resume-in-workspace", Name: "Resume", Description: "Resume in workspace", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
 		{ID: "yank-details", Name: "Copy Details", Description: "Copy session details", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
 		{ID: "yank-resume", Name: "Copy Resume", Description: "Copy resume command", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 4},
@@ -832,6 +960,10 @@ func (p *Plugin) Commands() []plugin.Command {
 
 // FocusContext returns the current focus context.
 func (p *Plugin) FocusContext() string {
+	// Content search modal takes precedence (td-6ac70a)
+	if p.contentSearchMode {
+		return "conversations-content-search"
+	}
 	// Resume modal takes precedence (td-aa4136)
 	if p.showResumeModal {
 		return "conversations-resume-modal"

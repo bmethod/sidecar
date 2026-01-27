@@ -123,6 +123,10 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.filterMode = true
 		p.hitRegionsDirty = true // Filter menu replaces session list (td-455e378b)
 
+	case "F":
+		// Open content search modal (td-6ac70a)
+		return p.openContentSearch()
+
 	case "r":
 		return p, p.loadSessions()
 
@@ -634,6 +638,10 @@ func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "R":
 		// Open resume modal for workspace
 		return p, p.openResumeModal()
+
+	case "F":
+		// Open content search modal (td-6ac70a)
+		return p.openContentSearch()
 	}
 
 	return p, nil
