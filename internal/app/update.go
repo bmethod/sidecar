@@ -19,6 +19,23 @@ import (
 	"github.com/marcus/sidecar/internal/version"
 )
 
+// isMouseEscapeSequence returns true if the key message appears to be
+// an unparsed mouse escape sequence (SGR format: [<...M or [<...m)
+func isMouseEscapeSequence(msg tea.KeyMsg) bool {
+	s := msg.String()
+	// SGR mouse sequences contain [< and end with M or m
+	if strings.Contains(s, "[<") && (strings.HasSuffix(s, "M") || strings.HasSuffix(s, "m")) {
+		return true
+	}
+	// Check for semicolon-separated coordinate patterns typical of mouse sequences
+	if strings.Contains(s, ";") && strings.ContainsAny(s, "0123456789") {
+		if strings.HasSuffix(s, "M") || strings.HasSuffix(s, "m") {
+			return true
+		}
+	}
+	return false
+}
+
 // Update handles all messages and returns the updated model and commands.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -638,6 +655,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Filter out unparsed mouse escape sequences
+		if isMouseEscapeSequence(msg) {
+			return m, nil
+		}
+
 		// Forward other keys to text input for filtering
 		var cmd tea.Cmd
 		m.worktreeSwitcherInput, cmd = m.worktreeSwitcherInput.Update(msg)
@@ -747,6 +769,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Close modal
 			m.resetProjectSwitcher()
 			m.updateContext()
+			return m, nil
+		}
+
+		// Filter out unparsed mouse escape sequences
+		if isMouseEscapeSequence(msg) {
 			return m, nil
 		}
 
@@ -889,6 +916,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.applyThemeFromConfig(m.themeSwitcherOriginal)
 			m.resetThemeSwitcher()
 			m.updateContext()
+			return m, nil
+		}
+
+		// Filter out unparsed mouse escape sequences
+		if isMouseEscapeSequence(msg) {
 			return m, nil
 		}
 
@@ -1591,6 +1623,11 @@ func (m *Model) handleProjectAddThemePickerKeys(msg tea.KeyMsg) (tea.Model, tea.
 		return m, nil
 	}
 
+	// Filter out unparsed mouse escape sequences
+	if isMouseEscapeSequence(msg) {
+		return m, nil
+	}
+
 	// Forward to filter input
 	var cmd tea.Cmd
 	m.projectAddThemeInput, cmd = m.projectAddThemeInput.Update(msg)
@@ -1749,6 +1786,11 @@ func (m Model) handleCommunityBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.resetCommunityBrowser()
 		m.resetThemeSwitcher()
 		m.updateContext()
+		return m, nil
+	}
+
+	// Filter out unparsed mouse escape sequences
+	if isMouseEscapeSequence(msg) {
 		return m, nil
 	}
 

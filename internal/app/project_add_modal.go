@@ -110,6 +110,11 @@ func (m *Model) projectAddNameUpdate(msg tea.Msg, focusID string) (string, tea.C
 		return "", nil
 	}
 
+	// Filter out unparsed mouse escape sequences
+	if isMouseEscapeSequence(keyMsg) {
+		return "", nil
+	}
+
 	// Clear error on typing
 	m.projectAddError = ""
 	m.projectAddModalWidth = 0 // Force rebuild to hide error
@@ -167,6 +172,11 @@ func (m *Model) projectAddPathUpdate(msg tea.Msg, focusID string) (string, tea.C
 
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if !ok {
+		return "", nil
+	}
+
+	// Filter out unparsed mouse escape sequences
+	if isMouseEscapeSequence(keyMsg) {
 		return "", nil
 	}
 
