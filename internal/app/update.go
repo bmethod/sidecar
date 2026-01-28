@@ -1252,7 +1252,7 @@ func (m Model) handleUpdateModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "j", "down":
 			m.changelogScrollOffset++
-			m.clearChangelogModal()
+			m.clearChangelogModal() // Must rebuild - closure captures stale model pointer
 			return m, nil
 		case "k", "up":
 			if m.changelogScrollOffset > 0 {
@@ -1276,7 +1276,7 @@ func (m Model) handleUpdateModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.clearChangelogModal()
 			return m, nil
 		case "G":
-			m.changelogScrollOffset = 999999 // Will be clamped in ensureChangelogModal
+			m.changelogScrollOffset = 999999 // Will be clamped during render
 			m.clearChangelogModal()
 			return m, nil
 		case "esc", "c", "q":
@@ -1419,7 +1419,7 @@ func (m Model) handleUpdateModalMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.changelogMouseHandler == nil {
 			m.changelogMouseHandler = mouse.NewHandler()
 		}
-		// Handle scroll events manually since changelog has custom scrolling
+		// Handle scroll events - must clear modal because closure captures stale model pointer
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			if m.changelogScrollOffset > 0 {
@@ -1427,13 +1427,11 @@ func (m Model) handleUpdateModalMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				if m.changelogScrollOffset < 0 {
 					m.changelogScrollOffset = 0
 				}
+				m.clearChangelogModal()
 			}
-			// Clear modal cache to re-render with new scroll position
-			m.clearChangelogModal()
 			return m, nil
 		case tea.MouseButtonWheelDown:
 			m.changelogScrollOffset += 3
-			// Clamping happens in ensureChangelogModal
 			m.clearChangelogModal()
 			return m, nil
 		}

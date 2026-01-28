@@ -424,12 +424,10 @@ func (m *Model) getChangelogModalWidth() int {
 }
 
 // ensureChangelogModal creates/updates the changelog modal with caching.
+// The modal is only rebuilt when width or height changes. Scroll offset changes
+// are handled dynamically by the Custom section reading from model fields.
 func (m *Model) ensureChangelogModal() {
 	modalW := m.getChangelogModalWidth()
-	if m.changelogModal != nil && m.changelogModalWidth == modalW {
-		return
-	}
-	m.changelogModalWidth = modalW
 	contentW := modalW - 6 // borders + padding
 
 	// Calculate max visible lines
@@ -442,19 +440,34 @@ func (m *Model) ensureChangelogModal() {
 		maxContentLines = 5
 	}
 
-	// Get and render changelog content
+	// Check if we can reuse the cached modal
+	// Rebuild only if width or max visible lines changed
+	if m.changelogModal != nil &&
+		m.changelogModalWidth == modalW &&
+		m.changelogMaxVisibleLines == maxContentLines {
+		return
+	}
+
+	m.changelogModalWidth = modalW
+	m.changelogMaxVisibleLines = maxContentLines
+
+	// Render changelog content and cache the lines
 	content := m.updateChangelog
 	if content == "" {
 		content = "Loading changelog..."
 	}
 	renderedContent := m.renderReleaseNotes(content, contentW)
-	lines := strings.Split(renderedContent, "\n")
+	m.changelogRenderedLines = strings.Split(renderedContent, "\n")
 
-	// Create a custom section that handles scrolling
+	// Create a custom section that handles scrolling dynamically
+	// The closure reads from model fields so scroll changes don't require rebuild
 	scrollSection := modal.Custom(func(cw int, focusID, hoverID string) modal.RenderedSection {
-		// Apply scroll offset
+		lines := m.changelogRenderedLines
+		maxVisible := m.changelogMaxVisibleLines
+
+		// Apply scroll offset with clamping
 		startLine := m.changelogScrollOffset
-		maxStart := len(lines) - maxContentLines
+		maxStart := len(lines) - maxVisible
 		if maxStart < 0 {
 			maxStart = 0
 		}
@@ -465,7 +478,7 @@ func (m *Model) ensureChangelogModal() {
 			startLine = 0
 		}
 
-		endLine := startLine + maxContentLines
+		endLine := startLine + maxVisible
 		if endLine > len(lines) {
 			endLine = len(lines)
 		}
@@ -474,7 +487,7 @@ func (m *Model) ensureChangelogModal() {
 		visibleContent := strings.Join(visibleLines, "\n")
 
 		// Add scroll indicator if needed
-		if len(lines) > maxContentLines {
+		if len(lines) > maxVisible {
 			scrollInfo := styles.Muted.Render(fmt.Sprintf("Lines %d-%d of %d", startLine+1, endLine, len(lines)))
 			visibleContent += "\n\n" + scrollInfo
 		}
@@ -500,6 +513,8 @@ func (m *Model) clearChangelogModal() {
 	m.changelogModal = nil
 	m.changelogModalWidth = 0
 	m.changelogMouseHandler = nil
+	m.changelogRenderedLines = nil
+	m.changelogMaxVisibleLines = 0
 }
 
 // fetchChangelog fetches the CHANGELOG.md from GitHub.

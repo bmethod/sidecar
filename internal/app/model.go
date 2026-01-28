@@ -223,6 +223,8 @@ type Model struct {
 	changelogModal            *modal.Modal
 	changelogModalWidth       int
 	changelogMouseHandler     *mouse.Handler
+	changelogRenderedLines    []string // Cached rendered changelog lines
+	changelogMaxVisibleLines  int      // Max lines visible in viewport
 
 	// Intro animation
 	intro IntroModel
