@@ -236,7 +236,8 @@ type Plugin struct {
 	inlineEditFile       string     // Path of file being edited
 	inlineEditOrigMtime  time.Time  // Original file mtime (to detect changes)
 	inlineEditEditor     string     // Editor command used (vim, nano, emacs, etc.)
-	inlineEditorDragging bool       // True when mouse is being dragged in editor (for text selection)
+	inlineEditorDragging bool      // True when mouse is being dragged in editor (for text selection)
+	lastDragForwardTime  time.Time // Throttle: last time a drag event was forwarded to tmux
 
 	// Exit confirmation state (when clicking away from editor)
 	showExitConfirmation bool        // True when confirmation dialog is shown
@@ -503,6 +504,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Invalidate markdown cache when size changes (width affects rendering)
 		if p.markdownRenderMode && p.isMarkdownFile() {
 			p.markdownRendered = nil
+			p.renderMarkdownContent()
+			if p.contentSearchMode && p.contentSearchQuery != "" {
+				p.updateContentMatches()
+			}
 		}
 		// Invalidate image cache when size changes (will re-render at new size)
 		p.imageResult = nil
