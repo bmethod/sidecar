@@ -34,10 +34,15 @@ type IssueSearchResultMsg struct {
 	Error   error
 }
 
-// issueSearchCmd runs `td search <query> --json -n 10` asynchronously.
-func issueSearchCmd(query string) tea.Cmd {
+// issueSearchCmd runs `td search <query> --json -n 50` asynchronously.
+// When includeClosed is false, filters to non-closed statuses.
+func issueSearchCmd(query string, includeClosed bool) tea.Cmd {
 	return func() tea.Msg {
-		out, err := exec.Command("td", "search", query, "--json", "-n", "10").Output()
+		args := []string{"search", query, "--json", "-n", "50"}
+		if !includeClosed {
+			args = append(args, "-s", "open", "-s", "in_progress", "-s", "blocked", "-s", "in_review")
+		}
+		out, err := exec.Command("td", args...).Output()
 		if err != nil {
 			return IssueSearchResultMsg{Query: query, Error: err}
 		}

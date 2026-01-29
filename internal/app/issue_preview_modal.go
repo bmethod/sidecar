@@ -105,23 +105,33 @@ func (m *Model) ensureIssueInputModal() {
 	// Status line — always present to avoid layout jumps
 	if m.issueSearchLoading {
 		b = b.AddSection(modal.Text(styles.Muted.Render("Searching...")))
+	} else if len(m.issueSearchResults) > 0 {
+		countStr := fmt.Sprintf("%d results", len(m.issueSearchResults))
+		if !m.issueSearchIncludeClosed {
+			countStr += " (excluding closed)"
+		}
+		b = b.AddSection(modal.Text(styles.Muted.Render(countStr)))
 	} else {
 		b = b.AddSection(modal.Text(styles.Muted.Render(" ")))
 	}
 
-	// Search results dropdown — reserve minResultLines to reduce jumpiness
+	// Search results dropdown — viewport window over all results
+	const maxVisible = 10
 	const minResultLines = 5
 	if len(m.issueSearchResults) > 0 {
 		searchResults := m.issueSearchResults
 		searchCursor := m.issueSearchCursor
+		searchScrollOffset := m.issueSearchScrollOffset
 		b = b.AddSection(modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
 			var sb strings.Builder
-			focusables := make([]modal.FocusableInfo, 0, len(searchResults))
-			displayed := len(searchResults)
-			if displayed > 10 {
-				displayed = 10
+			total := len(searchResults)
+			endIdx := searchScrollOffset + maxVisible
+			if endIdx > total {
+				endIdx = total
 			}
-			for i := 0; i < displayed; i++ {
+			visibleCount := endIdx - searchScrollOffset
+			focusables := make([]modal.FocusableInfo, 0, visibleCount)
+			for i := searchScrollOffset; i < endIdx; i++ {
 				r := searchResults[i]
 				tag := formatSearchStatusTag(r.Status)
 				icon := formatSearchTypeIcon(r.Type)
@@ -144,19 +154,19 @@ func (m *Model) ensureIssueInputModal() {
 				} else {
 					sb.WriteString(styles.ListItemNormal.Render(line))
 				}
-				if i < displayed-1 {
+				if i < endIdx-1 {
 					sb.WriteString("\n")
 				}
 				focusables = append(focusables, modal.FocusableInfo{
 					ID:      itemID,
 					OffsetX: 0,
-					OffsetY: i,
+					OffsetY: i - searchScrollOffset,
 					Width:   contentWidth,
 					Height:  1,
 				})
 			}
 			// Pad with empty lines to maintain minimum height
-			for i := displayed; i < minResultLines; i++ {
+			for i := visibleCount; i < minResultLines; i++ {
 				sb.WriteString("\n")
 			}
 			return modal.RenderedSection{Content: sb.String(), Focusables: focusables}
@@ -183,6 +193,7 @@ func (m *Model) ensureIssueInputModal() {
 
 	// Hint line
 	hasResults := len(m.issueSearchResults) > 0
+	includeClosed := m.issueSearchIncludeClosed
 	b = b.AddSection(modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
 		var sb strings.Builder
 		sb.WriteString("\n")
@@ -193,6 +204,13 @@ func (m *Model) ensureIssueInputModal() {
 			sb.WriteString(styles.Muted.Render(" select  "))
 			sb.WriteString(styles.KeyHint.Render("tab"))
 			sb.WriteString(styles.Muted.Render(" fill  "))
+		}
+		if includeClosed {
+			sb.WriteString(styles.KeyHint.Render("^x"))
+			sb.WriteString(styles.Muted.Render(" hide closed  "))
+		} else {
+			sb.WriteString(styles.KeyHint.Render("^x"))
+			sb.WriteString(styles.Muted.Render(" show closed  "))
 		}
 		sb.WriteString(styles.KeyHint.Render("esc"))
 		sb.WriteString(styles.Muted.Render(" cancel"))

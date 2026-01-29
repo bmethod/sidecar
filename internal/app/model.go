@@ -177,10 +177,12 @@ type Model struct {
 	issueInputMouseHandler *mouse.Handler
 
 	// Issue input auto-complete
-	issueSearchResults []IssueSearchResult
-	issueSearchQuery   string // last query sent to td search
-	issueSearchLoading bool
-	issueSearchCursor  int // selected result index (-1 = none/input focused)
+	issueSearchResults      []IssueSearchResult
+	issueSearchQuery        string // last query sent to td search
+	issueSearchLoading      bool
+	issueSearchCursor       int  // selected result index (-1 = none/input focused)
+	issueSearchScrollOffset int  // viewport scroll offset for search results
+	issueSearchIncludeClosed bool // whether to include closed issues in search
 
 	// Issue preview - preview phase
 	showIssuePreview         bool
@@ -1049,6 +1051,8 @@ func (m *Model) initIssueInput() {
 	m.issueSearchQuery = ""
 	m.issueSearchLoading = false
 	m.issueSearchCursor = -1
+	m.issueSearchScrollOffset = 0
+	m.issueSearchIncludeClosed = false
 }
 
 // resetIssueInput resets the issue input modal state.
@@ -1061,6 +1065,8 @@ func (m *Model) resetIssueInput() {
 	m.issueSearchQuery = ""
 	m.issueSearchLoading = false
 	m.issueSearchCursor = -1
+	m.issueSearchScrollOffset = 0
+	m.issueSearchIncludeClosed = false
 }
 
 // resetIssuePreview resets the issue preview modal state.

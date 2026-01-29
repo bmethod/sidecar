@@ -390,6 +390,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error == nil {
 			m.issueSearchResults = msg.Results
 		}
+		m.issueSearchScrollOffset = 0
 		m.issueInputModal = nil
 		m.issueInputModalWidth = 0
 		return m, nil
@@ -990,6 +991,20 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Handle issue input modal keys
 	if m.showIssueInput {
+		// ctrl+x toggles closed issue visibility (before type switch)
+		if msg.String() == "ctrl+x" {
+			m.issueSearchIncludeClosed = !m.issueSearchIncludeClosed
+			m.issueSearchScrollOffset = 0
+			m.issueSearchCursor = -1
+			m.issueInputModal = nil
+			m.issueInputModalWidth = 0
+			if len(strings.TrimSpace(m.issueInputInput.Value())) >= 2 {
+				m.issueSearchLoading = true
+				return m, issueSearchCmd(strings.TrimSpace(m.issueInputInput.Value()), m.issueSearchIncludeClosed)
+			}
+			return m, nil
+		}
+
 		switch msg.Type {
 		case tea.KeyEnter:
 			return m.issueInputSubmit()
@@ -998,6 +1013,10 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.issueSearchCursor--
 				if m.issueSearchCursor < -1 {
 					m.issueSearchCursor = -1
+				}
+				// Keep cursor visible in viewport
+				if m.issueSearchCursor >= 0 && m.issueSearchCursor < m.issueSearchScrollOffset {
+					m.issueSearchScrollOffset = m.issueSearchCursor
 				}
 				m.issueInputModal = nil
 				m.issueInputModalWidth = 0
@@ -1008,6 +1027,11 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.issueSearchCursor++
 				if m.issueSearchCursor >= len(m.issueSearchResults) {
 					m.issueSearchCursor = len(m.issueSearchResults) - 1
+				}
+				// Keep cursor visible in viewport
+				const maxVisible = 10
+				if m.issueSearchCursor >= m.issueSearchScrollOffset+maxVisible {
+					m.issueSearchScrollOffset = m.issueSearchCursor - maxVisible + 1
 				}
 				m.issueInputModal = nil
 				m.issueInputModalWidth = 0
@@ -1042,7 +1066,7 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Keep previous results visible while loading to avoid modal shrink/grow flicker.
 			// Results are replaced when the new IssueSearchResultMsg arrives.
 			m.issueSearchCursor = -1
-			return m, tea.Batch(cmd, issueSearchCmd(newValue))
+			return m, tea.Batch(cmd, issueSearchCmd(newValue, m.issueSearchIncludeClosed))
 		}
 		if len(newValue) < 2 {
 			m.issueSearchResults = nil

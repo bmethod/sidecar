@@ -144,6 +144,9 @@ func DefaultBindings() []Binding {
 		{Key: "esc", Command: "cancel", Context: "git-pull-menu"},
 
 		// Issue preview context
+		// Issue input modal context
+		{Key: "ctrl+x", Command: "toggle-closed", Context: "issue-input"},
+
 		{Key: "o", Command: "open-in-td", Context: "issue-preview"},
 		{Key: "b", Command: "issue-back", Context: "issue-preview"},
 		{Key: "y", Command: "yank-issue", Context: "issue-preview"},
