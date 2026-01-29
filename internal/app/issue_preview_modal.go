@@ -4,12 +4,70 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/sidecar/internal/markdown"
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 )
+
+// Issue type icons and colors (matching td monitor).
+var issueTypeIcons = map[string]string{
+	"epic": "◆", "feature": "●", "bug": "✗", "task": "■", "chore": "○",
+}
+var issueTypeColors = map[string]lipgloss.Color{
+	"epic": "212", "feature": "42", "bug": "196", "task": "45", "chore": "241",
+}
+
+func formatSearchTypeIcon(t string) string {
+	k := strings.ToLower(t)
+	icon := issueTypeIcons[k]
+	if icon == "" {
+		icon = "?"
+	}
+	c, ok := issueTypeColors[k]
+	if !ok {
+		return icon
+	}
+	return lipgloss.NewStyle().Foreground(c).Render(icon)
+}
+
+func formatSearchPriority(p string) string {
+	var s lipgloss.Style
+	switch strings.ToUpper(p) {
+	case "P0":
+		s = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+	case "P1":
+		s = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	case "P2":
+		s = lipgloss.NewStyle().Foreground(lipgloss.Color("45"))
+	default:
+		s = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	}
+	return s.Render(p)
+}
+
+func formatSearchStatusTag(status string) string {
+	switch strings.ToLower(status) {
+	case "in_review":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Render("[REV]")
+	case "open":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("[RDY]")
+	case "blocked":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("[BLK]")
+	case "in_progress":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("[WIP]")
+	case "closed":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("[CLS]")
+	default:
+		abbr := strings.ToUpper(status)
+		if len(abbr) > 3 {
+			abbr = abbr[:3]
+		}
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("[" + abbr + "]")
+	}
+}
 
 func (m *Model) renderIssueInputOverlay(content string) string {
 	m.ensureIssueInputModal()
@@ -27,7 +85,7 @@ func (m *Model) renderIssueInputOverlay(content string) string {
 const issueSearchResultPrefix = "issue-search-"
 
 func (m *Model) ensureIssueInputModal() {
-	modalW := 60
+	modalW := 80
 	if modalW > m.width-4 {
 		modalW = m.width - 4
 	}
@@ -65,10 +123,20 @@ func (m *Model) ensureIssueInputModal() {
 			}
 			for i := 0; i < displayed; i++ {
 				r := searchResults[i]
-				line := fmt.Sprintf("  %s  %s", r.ID, r.Title)
-				if len(line) > contentWidth-2 {
-					line = line[:contentWidth-5] + "..."
+				tag := formatSearchStatusTag(r.Status)
+				icon := formatSearchTypeIcon(r.Type)
+				pri := formatSearchPriority(r.Priority)
+				idStr := styles.Muted.Render(r.ID)
+				prefix := fmt.Sprintf(" %s %s %s %s ", tag, icon, idStr, pri)
+				title := r.Title
+				titleWidth := contentWidth - lipgloss.Width(prefix)
+				if titleWidth < 10 {
+					titleWidth = 10
 				}
+				if len(title) > titleWidth {
+					title = title[:titleWidth-3] + "..."
+				}
+				line := prefix + title
 				itemID := fmt.Sprintf("%s%d", issueSearchResultPrefix, i)
 				isHovered := itemID == hoverID
 				if i == searchCursor || isHovered {
