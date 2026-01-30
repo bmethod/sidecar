@@ -256,15 +256,10 @@ func getWorktreeCommits(workdir, baseBranch string) ([]CommitStatusInfo, error) 
 			pushed = isCommitInBranch(workdir, hash, remoteBranch)
 		}
 
-		// Check if merged (exists in base branch) - should always be false for these commits
-		// but include for potential future merge detection
-		merged := isCommitInBranch(workdir, hash, baseBranch)
-
 		commits = append(commits, CommitStatusInfo{
 			Hash:    hash,
 			Subject: subject,
 			Pushed:  pushed,
-			Merged:  merged,
 		})
 	}
 

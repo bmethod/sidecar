@@ -37,8 +37,8 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 
 	// Adjust available height for diff content
 	contentHeight := height - headerHeight
-	if contentHeight < 5 {
-		contentHeight = 5
+	if contentHeight < 1 {
+		contentHeight = 1
 	}
 
 	// Use multi-file diff rendering if available
