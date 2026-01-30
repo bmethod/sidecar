@@ -2,6 +2,29 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.59.0] - 2026-01-30
+
+### Features
+
+- Modal and shortcut capture improvements
+- Allow `[` to be typed in interactive shells
+- Show friendly error when issue not found in Open Issue modal
+- Error messaging for invalid configs
+- Improve sidebar discoverability with hints, Escape restore, and flash
+
+### Bug Fixes
+
+- Better merge errors in worktree merge
+- Git diff performance guard
+- Fix workspace performance and rendering bugs
+- Fix diagnostics modal showing stale version info
+- Fix config.Save() silently deleting user prompts from config.json
+- Better install messaging
+
+### Dependencies
+
+- Updated td to v0.27.0
+
 ## [v0.58.0] - 2026-01-30
 
 ### Dependencies
