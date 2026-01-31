@@ -157,6 +157,9 @@ type Plugin struct {
 	searchMatches []*FileNode
 	searchCursor  int
 
+	// Auto-open state
+	pendingOpenFile string // Relative path to open after next tree rebuild
+
 	// Content search state (preview pane)
 	contentSearchMode      bool
 	contentSearchCommitted bool // True after Enter confirms query (enables n/N navigation)
@@ -520,6 +523,18 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if msg.Err != nil {
 			p.ctx.Logger.Error("tree build failed", "error", msg.Err)
 		}
+		// Handle pending auto-open from file creation
+		if p.pendingOpenFile != "" {
+			path := p.pendingOpenFile
+			p.pendingOpenFile = "" // Clear immediately to avoid re-processing
+			_, navCmd := p.navigateToFile(path)
+			// Restore state after first tree build
+			if !p.stateRestored {
+				p.stateRestored = true
+				return p, tea.Batch(navCmd, p.restoreState())
+			}
+			return p, navCmd
+		}
 		// Restore state after first tree build
 		if !p.stateRestored {
 			p.stateRestored = true
@@ -646,6 +661,12 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.fileOpMode = FileOpNone
 		p.fileOpTarget = nil
 		p.fileOpError = ""
+		// If we created a file (not directory), schedule auto-open after tree refresh
+		if !msg.IsDir {
+			if relPath, err := filepath.Rel(p.ctx.WorkDir, msg.Path); err == nil {
+				p.pendingOpenFile = relPath
+			}
+		}
 		return p, p.refresh()
 
 	case DeleteSuccessMsg:
