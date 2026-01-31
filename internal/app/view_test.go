@@ -1,7 +1,9 @@
 package app
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/config"
@@ -202,6 +204,39 @@ func TestRepoNameClick_OutsideBounds(t *testing.T) {
 	if updated.showProjectSwitcher {
 		t.Error("clicking outside repo name bounds should NOT open project switcher")
 	}
+}
+
+func TestRenderHeader_ShowClockConfig(t *testing.T) {
+	now := time.Date(2025, 1, 1, 14, 30, 0, 0, time.UTC)
+	reg := plugin.NewRegistry(nil)
+
+	t.Run("clock visible when showClock is true", func(t *testing.T) {
+		m := Model{
+			showClock: true,
+			ui:        &UIState{Clock: now},
+			registry:  reg,
+			width:     120,
+			intro:     IntroModel{Done: true},
+		}
+		header := m.renderHeader()
+		if !strings.Contains(header, "14:30") {
+			t.Error("header should contain clock when showClock is true")
+		}
+	})
+
+	t.Run("clock hidden when showClock is false", func(t *testing.T) {
+		m := Model{
+			showClock: false,
+			ui:        &UIState{Clock: now},
+			registry:  reg,
+			width:     120,
+			intro:     IntroModel{Done: true},
+		}
+		header := m.renderHeader()
+		if strings.Contains(header, "14:30") {
+			t.Error("header should not contain clock when showClock is false")
+		}
+	})
 }
 
 func TestIntroActive_SetFalseAfterCompletion(t *testing.T) {

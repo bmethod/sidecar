@@ -104,6 +104,7 @@ type Model struct {
 	diagnosticsModalWidth   int
 	diagnosticsMouseHandler *mouse.Handler
 	showFooter              bool
+	showClock               bool
 	showPalette      bool
 	showQuitConfirm  bool
 	quitModal        *modal.Modal
@@ -273,7 +274,8 @@ func New(reg *plugin.Registry, km *keymap.Registry, cfg *config.Config, currentV
 		keymap:                km,
 		activePlugin:          activeIdx,
 		activeContext:         "global",
-		showFooter:            true,
+		showFooter:            cfg.UI.ShowFooter,
+		showClock:             cfg.UI.ShowClock,
 		palette:               palette.New(),
 		ui:                    ui,
 		ready:                 false,

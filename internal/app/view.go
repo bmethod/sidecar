@@ -514,8 +514,11 @@ func (m Model) renderHeader() string {
 	}
 	tabBar := strings.Join(tabs, " ")
 
-	// Clock
-	clock := styles.BarText.Render(m.ui.Clock.Format("15:04"))
+	// Clock (conditional on config)
+	clock := ""
+	if m.showClock {
+		clock = styles.BarText.Render(m.ui.Clock.Format("15:04"))
+	}
 
 	// Calculate spacing (always use finalTitleWidth so tabs don't shift)
 	tabWidth := lipgloss.Width(tabBar)
