@@ -2,6 +2,22 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.61.0] - 2026-01-31
+
+### Features
+
+- Breadcrumb navigation in git diff view
+
+### Bug Fixes
+
+- Fix showClock config not disabling clock in header bar
+- File preview behavior improvements
+- Suppress stray `[` characters leaked from mouse motion CSI sequences using time-gating
+
+### Dependencies
+
+- Updated td to v0.28.0
+
 ## [v0.60.0] - 2026-01-30
 
 ### Bug Fixes
