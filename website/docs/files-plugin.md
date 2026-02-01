@@ -159,7 +159,7 @@ Yank a file, navigate to the destination directory, and paste. Works for both fi
 
 | Key | Action |
 |-----|--------|
-| `d` | Delete with confirmation |
+| `D` | Delete with confirmation |
 
 Confirmation modal shows the item being deleted and requires explicit approval.
 
@@ -238,7 +238,7 @@ Reveal opens the system file manager with the file selected (macOS Finder, Windo
 | `/` | Filter tree by filename |
 | `n` / `N` | Create new file/directory |
 | `r` / `m` | Rename/move file |
-| `d` | Delete (with confirmation) |
+| `D` | Delete (with confirmation) |
 | `y` / `p` | Yank/paste file |
 | `c` | Copy file path |
 | `I` | Show file info modal |
