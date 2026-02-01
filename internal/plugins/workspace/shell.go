@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/features"
 	"github.com/marcus/sidecar/internal/state"
+	"github.com/marcus/sidecar/internal/tty"
 )
 
 // Shell session constants
@@ -604,10 +605,14 @@ func (p *Plugin) recreateOrphanedShell(idx int) tea.Cmd {
 
 	sessionName := shell.TmuxName
 	workDir := p.ctx.WorkDir
+	previewWidth, previewHeight := p.calculatePreviewDimensions()
 
 	return func() tea.Msg {
 		// Create new detached session
 		args := []string{"new-session", "-d", "-s", sessionName, "-c", workDir}
+		if previewWidth > 0 && previewHeight > 0 {
+			args = append(args, "-x", strconv.Itoa(previewWidth), "-y", strconv.Itoa(previewHeight))
+		}
 		cmd := exec.Command("tmux", args...)
 		if err := cmd.Run(); err != nil {
 			return ShellCreatedMsg{
@@ -616,6 +621,8 @@ func (p *Plugin) recreateOrphanedShell(idx int) tea.Cmd {
 				Err:         fmt.Errorf("recreate shell session: %w", err),
 			}
 		}
+
+		tty.SetWindowSizeManual(sessionName)
 
 		// Capture pane ID
 		paneID := getPaneID(sessionName)
@@ -706,9 +713,13 @@ func (p *Plugin) ensureShellAndAttachByIndex(idx int) tea.Cmd {
 
 	// Session doesn't exist but we have a record - recreate it
 	workDir := p.ctx.WorkDir
+	previewWidth, previewHeight := p.calculatePreviewDimensions()
 	return tea.Sequence(
 		func() tea.Msg {
 			args := []string{"new-session", "-d", "-s", sessionName, "-c", workDir}
+			if previewWidth > 0 && previewHeight > 0 {
+				args = append(args, "-x", strconv.Itoa(previewWidth), "-y", strconv.Itoa(previewHeight))
+			}
 			cmd := exec.Command("tmux", args...)
 			if err := cmd.Run(); err != nil {
 				return ShellCreatedMsg{
@@ -717,6 +728,7 @@ func (p *Plugin) ensureShellAndAttachByIndex(idx int) tea.Cmd {
 					Err:         fmt.Errorf("recreate shell session: %w", err),
 				}
 			}
+			tty.SetWindowSizeManual(sessionName)
 			// Capture pane ID for interactive mode support
 			paneID := getPaneID(sessionName)
 			return ShellCreatedMsg{SessionName: sessionName, DisplayName: shell.Name, PaneID: paneID}
