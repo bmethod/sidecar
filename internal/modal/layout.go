@@ -15,6 +15,31 @@ type renderedSection struct {
 	focusables []FocusableInfo
 }
 
+// renderSections renders all sections at the given content width and returns
+// the rendered sections along with collected focusable IDs.
+func (m *Modal) renderSections(contentWidth int) ([]renderedSection, []string) {
+	focusID := m.currentFocusID()
+	rendered := make([]renderedSection, 0, len(m.sections))
+	var focusIDs []string
+
+	for _, s := range m.sections {
+		res := s.Render(contentWidth, focusID, m.hoverID)
+		height := measureHeight(res.Content)
+
+		rendered = append(rendered, renderedSection{
+			content:    res.Content,
+			height:     height,
+			focusables: res.Focusables,
+		})
+
+		for _, f := range res.Focusables {
+			focusIDs = append(focusIDs, f.ID)
+		}
+	}
+
+	return rendered, focusIDs
+}
+
 // buildLayout renders all sections, measures heights, and registers hit regions.
 func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string {
 	// Clamp modal width
@@ -32,52 +57,7 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 		contentWidth = 1
 	}
 
-	// 1. Render sections individually, measure heights, collect focusables
-	focusID := m.currentFocusID()
-	rendered := make([]renderedSection, 0, len(m.sections))
-	m.focusIDs = m.focusIDs[:0] // Reset focusable IDs
-
-	for _, s := range m.sections {
-		res := s.Render(contentWidth, focusID, m.hoverID)
-		height := measureHeight(res.Content)
-
-		rendered = append(rendered, renderedSection{
-			content:    res.Content,
-			height:     height,
-			focusables: res.Focusables,
-		})
-
-		// Collect focusable IDs in order
-		for _, f := range res.Focusables {
-			m.focusIDs = append(m.focusIDs, f.ID)
-		}
-	}
-
-	// Ensure focusIdx is valid
-	if len(m.focusIDs) > 0 && m.focusIdx >= len(m.focusIDs) {
-		m.focusIdx = 0
-	}
-
-	// Filter out zero-height sections (e.g., inactive When)
-	visible := make([]renderedSection, 0, len(rendered))
-	for _, r := range rendered {
-		if r.content != "" || r.height > 0 {
-			visible = append(visible, r)
-		}
-	}
-
-	// 2. Join full content with newlines between non-empty sections
-	var parts []string
-	totalContentHeight := 0
-	for _, r := range visible {
-		parts = append(parts, r.content)
-		totalContentHeight += r.height
-	}
-	fullContent := strings.Join(parts, "\n")
-
-	// 3. Compute scroll viewport
-	actualContentHeight := totalContentHeight
-
+	// Compute viewport height budget
 	modalInnerHeight := desiredModalInnerHeight(screenH)
 	headerLines := 0
 	if m.title != "" {
@@ -89,6 +69,43 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 	}
 	maxViewportHeight := max(1, modalInnerHeight-headerLines-footerLines)
 
+	// 1. First pass: render sections at full width to measure total height
+	rendered, focusIDs := m.renderSections(contentWidth)
+	m.focusIDs = focusIDs
+
+	// Ensure focusIdx is valid
+	if len(m.focusIDs) > 0 && m.focusIdx >= len(m.focusIDs) {
+		m.focusIdx = 0
+	}
+
+	// Filter out zero-height sections
+	visible := filterVisible(rendered)
+	actualContentHeight := totalHeight(visible)
+
+	// 2. Determine if scrollbar is needed
+	needsScrollbar := actualContentHeight > maxViewportHeight
+
+	// If scrollbar needed, re-render sections with reduced width
+	if needsScrollbar && contentWidth > 1 {
+		rendered, focusIDs = m.renderSections(contentWidth - 1)
+		m.focusIDs = focusIDs
+		if len(m.focusIDs) > 0 && m.focusIdx >= len(m.focusIDs) {
+			m.focusIdx = 0
+		}
+		visible = filterVisible(rendered)
+		actualContentHeight = totalHeight(visible)
+		// Recheck: content may now fit (unlikely but possible with wrapping changes)
+		needsScrollbar = actualContentHeight > maxViewportHeight
+	}
+
+	// 3. Join full content with newlines between non-empty sections
+	var parts []string
+	for _, r := range visible {
+		parts = append(parts, r.content)
+	}
+	fullContent := strings.Join(parts, "\n")
+
+	// 4. Compute scroll viewport
 	viewportHeight := maxViewportHeight
 	padToHeight := true
 	if actualContentHeight <= maxViewportHeight {
@@ -103,7 +120,13 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 	// Slice content to viewport
 	viewport := sliceLines(fullContent, m.scrollOffset, viewportHeight, padToHeight)
 
-	// 4. Build modal content
+	// 5. If scrollbar needed, render and join horizontally
+	if needsScrollbar {
+		scrollbar := renderScrollbar(actualContentHeight, m.scrollOffset, viewportHeight)
+		viewport = lipgloss.JoinHorizontal(lipgloss.Top, viewport, scrollbar)
+	}
+
+	// 6. Build modal content
 	var inner strings.Builder
 	if m.title != "" {
 		inner.WriteString(renderTitleLine(m.title, m.variant))
@@ -119,13 +142,13 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 		inner.WriteString(m.customFooter)
 	}
 
-	// 5. Apply modal style
+	// 7. Apply modal style
 	styled := m.modalStyle(modalWidth).Render(inner.String())
 	modalH := lipgloss.Height(styled)
 	modalX := (screenW - modalWidth) / 2
 	modalY := (screenH - modalH) / 2
 
-	// 6. Register hit regions
+	// 8. Register hit regions
 	if handler != nil {
 		handler.HitMap.Clear()
 
@@ -161,6 +184,73 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 	}
 
 	return styled
+}
+
+// filterVisible returns only sections with non-empty content.
+func filterVisible(sections []renderedSection) []renderedSection {
+	visible := make([]renderedSection, 0, len(sections))
+	for _, r := range sections {
+		if r.content != "" || r.height > 0 {
+			visible = append(visible, r)
+		}
+	}
+	return visible
+}
+
+// totalHeight sums the heights of all sections.
+func totalHeight(sections []renderedSection) int {
+	h := 0
+	for _, r := range sections {
+		h += r.height
+	}
+	return h
+}
+
+// renderScrollbar renders a single-column vertical scrollbar.
+// Uses the same visual style as ui.RenderScrollbar but avoids an import cycle.
+func renderScrollbar(totalItems, scrollOffset, viewportHeight int) string {
+	if viewportHeight < 1 {
+		return ""
+	}
+
+	// Thumb size: proportional to visible fraction, minimum 1
+	thumbSize := (viewportHeight * viewportHeight) / totalItems
+	if thumbSize < 1 {
+		thumbSize = 1
+	}
+	if thumbSize > viewportHeight {
+		thumbSize = viewportHeight
+	}
+
+	// Thumb position
+	maxOffset := totalItems - viewportHeight
+	if maxOffset < 1 {
+		maxOffset = 1
+	}
+	thumbPos := (scrollOffset * (viewportHeight - thumbSize)) / maxOffset
+	if thumbPos < 0 {
+		thumbPos = 0
+	}
+	if thumbPos > viewportHeight-thumbSize {
+		thumbPos = viewportHeight - thumbSize
+	}
+
+	trackStyle := lipgloss.NewStyle().Foreground(styles.TextSubtle)
+	thumbStyle := lipgloss.NewStyle().Foreground(styles.TextMuted)
+
+	trackChar := trackStyle.Render("│") // │
+	thumbChar := thumbStyle.Render("┃") // ┃
+
+	lines := make([]string, viewportHeight)
+	for i := range viewportHeight {
+		if i >= thumbPos && i < thumbPos+thumbSize {
+			lines[i] = thumbChar
+		} else {
+			lines[i] = trackChar
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // modalStyle returns the lipgloss style for the modal box based on variant.

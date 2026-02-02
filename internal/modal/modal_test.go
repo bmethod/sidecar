@@ -615,3 +615,88 @@ func TestReset(t *testing.T) {
 		t.Errorf("expected scrollOffset 0, got %d", m.scrollOffset)
 	}
 }
+
+// --- Scrollbar tests ---
+
+// makeMultilineSection creates a Custom section that renders n lines of text.
+func makeMultilineSection(n int) Section {
+	return Custom(func(contentWidth int, focusID, hoverID string) RenderedSection {
+		lines := make([]string, n)
+		for i := range n {
+			lines[i] = strings.Repeat("x", min(contentWidth, 10))
+		}
+		return RenderedSection{Content: strings.Join(lines, "\n")}
+	}, nil)
+}
+
+func TestScrollbarAppearsOnOverflow(t *testing.T) {
+	// Create a modal with many lines that will overflow a small screen
+	m := New("Scroll Test", WithWidth(40), WithHints(false))
+	m.AddSection(makeMultilineSection(30)) // 30 lines of content
+
+	handler := mouse.NewHandler()
+	rendered := m.Render(80, 20, handler) // screenH=20 -> inner ~14 -> viewport ~12
+
+	// The scrollbar uses ┃ (thumb) and │ (track) characters
+	if !strings.Contains(rendered, "┃") && !strings.Contains(rendered, "│") {
+		t.Error("expected scrollbar characters (┃ or │) when content overflows")
+	}
+}
+
+func TestScrollbarAbsentWhenContentFits(t *testing.T) {
+	// Create a modal with few lines that fit easily
+	m := New("No Scroll", WithWidth(40), WithHints(false))
+	m.AddSection(makeMultilineSection(3)) // Only 3 lines
+
+	handler := mouse.NewHandler()
+	rendered := m.Render(80, 40, handler) // Large screen, content fits
+
+	// Should NOT contain scrollbar thumb character
+	if strings.Contains(rendered, "┃") {
+		t.Error("expected no scrollbar thumb (┃) when content fits in viewport")
+	}
+}
+
+func TestScrollbarReducesContentWidth(t *testing.T) {
+	// Track the content width passed to the section
+	var capturedWidth int
+	section := Custom(func(contentWidth int, focusID, hoverID string) RenderedSection {
+		capturedWidth = contentWidth
+		lines := make([]string, 30) // Force overflow
+		for i := range lines {
+			lines[i] = "x"
+		}
+		return RenderedSection{Content: strings.Join(lines, "\n")}
+	}, nil)
+
+	m := New("Width Test", WithWidth(40), WithHints(false))
+	m.AddSection(section)
+
+	handler := mouse.NewHandler()
+	m.Render(80, 20, handler)
+
+	// Modal width 40 - ModalPadding(6) = 34 content width
+	// With scrollbar, should be 33
+	expectedWidth := 40 - ModalPadding - 1
+	if capturedWidth != expectedWidth {
+		t.Errorf("expected content width %d with scrollbar, got %d", expectedWidth, capturedWidth)
+	}
+}
+
+func TestRenderScrollbarFunction(t *testing.T) {
+	// Test the internal renderScrollbar function directly
+	sb := renderScrollbar(20, 0, 10)
+	lines := strings.Split(sb, "\n")
+	if len(lines) != 10 {
+		t.Errorf("expected 10 lines, got %d", len(lines))
+	}
+
+	// Should contain both track and thumb chars
+	full := strings.Join(lines, "")
+	if !strings.Contains(full, "┃") {
+		t.Error("expected thumb character ┃ in scrollbar")
+	}
+	if !strings.Contains(full, "│") {
+		t.Error("expected track character │ in scrollbar")
+	}
+}
