@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/ui"
 )
 
 // Modal style functions - return fresh styles using current theme colors.
@@ -375,18 +376,34 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 		if p.scrollOffset < 0 {
 			p.scrollOffset = 0
 		}
+
+		// Render worktree items at reduced width to leave room for scrollbar
+		worktreeItemWidth := width - 1
+		var worktreeLines []string
 		for i := p.scrollOffset; i < len(p.worktrees) && i < p.scrollOffset+p.visibleCount; i++ {
 			wt := p.worktrees[i]
 			// Only show as selected if not shellSelected AND index matches
 			selected := !p.shellSelected && i == p.selectedIdx
-			line := p.renderWorktreeItem(wt, selected, width)
+			line := p.renderWorktreeItem(wt, selected, worktreeItemWidth)
 
 			// Register hit region with ABSOLUTE index
 			p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, width, itemHeight, i)
 
-			lines = append(lines, line)
+			worktreeLines = append(worktreeLines, line)
 			currentY += itemHeight
 		}
+
+		// Build scrollbar alongside worktree content
+		worktreeContent := strings.Join(worktreeLines, "\n")
+		trackHeight := p.visibleCount * itemHeight
+		scrollbar := ui.RenderScrollbar(ui.ScrollbarParams{
+			TotalItems:   len(p.worktrees),
+			ScrollOffset: p.scrollOffset,
+			VisibleItems: p.visibleCount,
+			TrackHeight:  trackHeight,
+		})
+		worktreeWithScrollbar := lipgloss.JoinHorizontal(lipgloss.Top, worktreeContent, scrollbar)
+		lines = append(lines, worktreeWithScrollbar)
 	}
 
 	return strings.Join(lines, "\n")
