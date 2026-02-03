@@ -825,7 +825,7 @@ function WorkflowSection() {
             <div>
               <h3 className="sc-workflowTitle">1. Plan</h3>
               <p className="sc-workflowDesc">
-                Create tasks in <a href="https://marcus.github.io/td/" className="sc-inlineLink">td</a> to give agents clear objectives and context.
+                Create tasks in <a href="https://td.haplab.com/" className="sc-inlineLink">td</a> to give agents clear objectives and context.
               </p>
             </div>
           </div>
@@ -908,7 +908,7 @@ export default function Home() {
 
             <p className="sc-subtitle">
               Sidecar puts your entire development workflow in one shell:
-              plan tasks with <a href="https://marcus.github.io/td/" className="sc-inlineLink">td</a>, chat with AI agents, review diffs, stage commits, switch between projects instantly, and manage git workspaces—all without leaving Sidecar.
+              plan tasks with <a href="https://td.haplab.com/" className="sc-inlineLink">td</a>, chat with AI agents, review diffs, stage commits, switch between projects instantly, and manage git workspaces—all without leaving Sidecar.
             </p>
 
             <div className="sc-heroCta">
@@ -959,7 +959,7 @@ export default function Home() {
               {/* TD Hero Card - double wide */}
               <FeatureCard
                 id="td"
-                title={<>Plan with <a href="https://marcus.github.io/td/" className="sc-inlineLink">td</a></>}
+                title={<>Plan with <a href="https://td.haplab.com/" className="sc-inlineLink">td</a></>}
                 chip="td"
                 isHero={true}
                 isHighlighted={activeTab === 'td'}
@@ -1025,7 +1025,7 @@ export default function Home() {
           <div className="sc-showcaseFullWidth">
             <ComponentSection
               id="showcase-td"
-              title={<>Plan with <a href="https://marcus.github.io/td/" className="sc-inlineLink">td</a></>}
+              title={<>Plan with <a href="https://td.haplab.com/" className="sc-inlineLink">td</a></>}
               gradient="sc-gradientGreen"
               MockupComponent={TdMockup}
               features={[
@@ -1328,20 +1328,23 @@ export default function Home() {
         <section className="sc-sisterProjects">
           <div className="container">
             <h2 className="sc-sisterTitle">Sister Projects</h2>
+            <a href="https://haplab.com" className="sc-sisterHaplab">
+              <img src={useBaseUrl('/img/haplab-logo.png')} alt="Haplab" />
+            </a>
             <div className="sc-sisterGrid">
-              <a href="https://marcus.github.io/sidecar/" className="sc-sisterCard sc-sisterCardGreen sc-sisterCardCurrent">
+              <a href="https://sidecar.haplab.com/" className="sc-sisterCard sc-sisterCardGreen sc-sisterCardCurrent">
                 <div className="sc-sisterLogoWrapper">
                   <img src={useBaseUrl('/img/sidecar-logo.png')} alt="Sidecar" className="sc-sisterLogo" />
                 </div>
                 <p>You might never open your editor again.</p>
               </a>
-              <a href="https://marcus.github.io/betamax/" className="sc-sisterCard sc-sisterCardBlue">
+              <a href="https://betamax.haplab.com/" className="sc-sisterCard sc-sisterCardBlue">
                 <div className="sc-sisterLogoWrapper">
                   <img src={useBaseUrl('/img/betamax-logo-fuzzy.png')} alt="Betamax" className="sc-sisterLogo" />
                 </div>
                 <p>Record anything you see in your terminal.</p>
               </a>
-              <a href="https://marcus.github.io/td/" className="sc-sisterCard sc-sisterCardPurple">
+              <a href="https://td.haplab.com/" className="sc-sisterCard sc-sisterCardPurple">
                 <div className="sc-sisterLogoWrapper">
                   <img src={useBaseUrl('/img/td-logo.png')} alt="td" className="sc-sisterLogo" />
                 </div>

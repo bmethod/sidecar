@@ -20,10 +20,10 @@ const config = {
   },
 
   // Set the production url of your site here
-  url: 'https://marcus.github.io',
+  url: 'https://sidecar.haplab.com',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: '/sidecar/',
+  baseUrl: '/',
 
   // GitHub pages deployment config.
   organizationName: 'marcus',
@@ -125,6 +125,11 @@ const config = {
             sidebarId: 'tutorialSidebar',
             position: 'left',
             label: 'Docs',
+          },
+          {
+            href: 'https://haplab.com',
+            position: 'left',
+            label: 'Haplab',
           },
           {
             type: 'custom-themeSwitcher',
