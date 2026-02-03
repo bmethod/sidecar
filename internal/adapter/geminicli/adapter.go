@@ -152,6 +152,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			IsSubAgent:   false,
 			MessageCount: meta.MsgCount,
 			FileSize:     info.Size(),
+			Path:         path, // td-dca6fe: tiered watching needs session file path
 		})
 	}
 

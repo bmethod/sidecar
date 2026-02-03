@@ -164,6 +164,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			IsSubAgent:   meta.ParentID != "",
 			MessageCount: meta.MsgCount,
 			FileSize:     info.Size(), // Session metadata file size (OpenCode uses separate message files)
+			Path:         path,        // td-dca6fe: tiered watching needs session file path
 		})
 	}
 

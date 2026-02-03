@@ -325,7 +325,8 @@ func (p *Plugin) loadMessages(sessionID string) tea.Cmd {
 // Uses tiered watching (td-dca6fe) to reduce FD count:
 // - HOT tier: 1-3 most recently active sessions use real-time fsnotify
 // - COLD tier: All other sessions use periodic polling (every 30s)
-// Global-scoped adapters (codex, warp) only create one watcher to avoid duplicates (td-7a72b6f7).
+// File-based adapters (claudecode, codex, geminicli, opencode) use tiered watcher.
+// Database adapters (cursor, warp) still use their own Watch() methods.
 func (p *Plugin) startWatcher() tea.Cmd {
 	return func() tea.Msg {
 		if len(p.adapters) == 0 {
@@ -351,9 +352,110 @@ func (p *Plugin) startWatcher() tea.Cmd {
 		var wg sync.WaitGroup
 		watchCount := 0
 
-		// Watch all worktree paths with each adapter
-		// Global-scoped adapters only watch once to avoid duplicate events (td-7a72b6f7)
+		// Collect all file-based sessions for tiered watching (td-dca6fe)
+		// Sessions with a Path field use the tiered watcher
+		var tieredSessions []tieredwatcher.SessionInfo
+		fileBasedAdapters := make(map[string]bool) // adapters with file paths
+
 		for adapterID, a := range p.adapters {
+			// Check if adapter has global watch scope
+			isGlobal := false
+			if scopeProvider, ok := a.(adapter.WatchScopeProvider); ok {
+				isGlobal = scopeProvider.WatchScope() == adapter.WatchScopeGlobal
+			}
+
+			pathsToScan := worktreePaths
+			if isGlobal {
+				// Global adapters only need one scan call (uses first path)
+				pathsToScan = worktreePaths[:1]
+			}
+
+			hasFilePaths := false
+			for _, wtPath := range pathsToScan {
+				sessions, _ := a.Sessions(wtPath)
+				for _, s := range sessions {
+					if s.Path != "" {
+						hasFilePaths = true
+						tieredSessions = append(tieredSessions, tieredwatcher.SessionInfo{
+							ID:       s.ID,
+							Path:     s.Path,
+							ModTime:  s.UpdatedAt,
+							FileSize: s.FileSize,
+						})
+					}
+				}
+			}
+			if hasFilePaths {
+				fileBasedAdapters[adapterID] = true
+			}
+		}
+
+		// Create tiered watchers for file-based sessions (td-dca6fe)
+		// This replaces a.Watch() calls for file-based adapters
+		if len(tieredSessions) > 0 {
+			// Group sessions by directory for efficient watching
+			// Also track the file extension for each directory
+			dirToSessions := make(map[string][]tieredwatcher.SessionInfo)
+			dirToExt := make(map[string]string) // directory -> file extension
+			for _, s := range tieredSessions {
+				dir := filepath.Dir(s.Path)
+				dirToSessions[dir] = append(dirToSessions[dir], s)
+				if _, ok := dirToExt[dir]; !ok {
+					dirToExt[dir] = filepath.Ext(s.Path) // e.g., ".jsonl" or ".json"
+				}
+			}
+
+			// Create one tiered watcher per unique session directory
+			for rootDir, sessions := range dirToSessions {
+				ext := dirToExt[rootDir]
+				tw, ch, err := tieredwatcher.New(tieredwatcher.Config{
+					RootDir:     rootDir,
+					FilePattern: ext,
+					ExtractID: func(path string) string {
+						base := filepath.Base(path)
+						// Strip known prefixes for gemini-cli sessions
+						base = strings.TrimPrefix(base, "session-")
+						return strings.TrimSuffix(base, filepath.Ext(base))
+					},
+				})
+				if err != nil {
+					continue
+				}
+
+				// Register all sessions with this watcher
+				tw.RegisterSessions(sessions)
+				manager.AddWatcher(rootDir, tw, ch)
+				watchCount++
+			}
+
+			// Forward tiered watcher events to merged channel
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case evt, ok := <-manager.Events():
+						if !ok {
+							return
+						}
+						select {
+						case merged <- evt:
+						default:
+						}
+					}
+				}
+			}()
+		}
+
+		// For adapters without file paths (database-based like cursor, warp),
+		// still use their Watch() methods
+		for adapterID, a := range p.adapters {
+			if fileBasedAdapters[adapterID] {
+				continue // Already using tiered watcher
+			}
+
 			// Check if adapter has global watch scope
 			isGlobal := false
 			if scopeProvider, ok := a.(adapter.WatchScopeProvider); ok {
@@ -362,7 +464,6 @@ func (p *Plugin) startWatcher() tea.Cmd {
 
 			pathsToWatch := worktreePaths
 			if isGlobal {
-				// Global adapters only need one watch call (uses first path)
 				pathsToWatch = worktreePaths[:1]
 			}
 
@@ -373,13 +474,6 @@ func (p *Plugin) startWatcher() tea.Cmd {
 						_ = closer.Close()
 					}
 					continue
-				}
-
-				// Register sessions with tiered manager for COLD tier polling
-				sessions, _ := a.Sessions(wtPath)
-				for _, s := range sessions {
-					// Session ID is already unique per adapter
-					manager.RegisterSession(adapterID, s.ID, "")
 				}
 
 				watchCount++
@@ -394,10 +488,6 @@ func (p *Plugin) startWatcher() tea.Cmd {
 						case evt, ok := <-c:
 							if !ok {
 								return
-							}
-							// Promote session to HOT tier on activity (td-dca6fe)
-							if evt.SessionID != "" {
-								manager.PromoteSession(evt.SessionID)
 							}
 							select {
 							case merged <- evt:

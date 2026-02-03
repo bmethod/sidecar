@@ -98,6 +98,7 @@ type Session struct {
 	IsSubAgent   bool    // True if this is a sub-agent spawned by another session
 	MessageCount int     // Number of user/assistant messages (0 = metadata-only)
 	FileSize     int64   // Session file size in bytes, for performance-aware behavior
+	Path         string  // Absolute path to session file (for tiered watching, td-dca6fe)
 
 	// Worktree fields - populated when session is from a different worktree
 	WorktreeName string // Branch name or directory name of the worktree (empty if main or non-worktree)

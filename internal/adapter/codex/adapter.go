@@ -154,6 +154,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 			TotalTokens:  meta.TotalTokens,
 			MessageCount: meta.MsgCount,
 			FileSize:     f.info.Size(),
+			Path:         f.path, // td-dca6fe: tiered watching needs session file path
 		})
 
 		// Add to new index (will be swapped atomically after loop)
