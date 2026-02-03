@@ -763,6 +763,7 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 			if i < len(lines) {
 				lineContent = lines[i]
 			}
+			lineContent = ui.ExpandTabs(lineContent, 8)
 			// Truncate using lipgloss (handles ANSI codes properly)
 			lineContent = lipgloss.NewStyle().MaxWidth(maxLineWidth).Render(lineContent)
 			lineContent = ui.InjectCharacterRangeBackground(lineContent, startCol, endCol)
@@ -777,6 +778,11 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 				}
 			}
 			visualLinesRendered++
+			if p.previewWrapEnabled {
+				if i < contentEnd-1 || p.isTruncated {
+					sb.WriteString("\n")
+				}
+			}
 		} else {
 			// Get line content
 			var lineContent string
@@ -792,6 +798,7 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 			} else if i < len(lines) {
 				lineContent = lines[i]
 			}
+			lineContent = ui.ExpandTabs(lineContent, 8)
 
 			if p.previewWrapEnabled {
 				wrapped := wrapStyle.Render(lineContent)

@@ -64,3 +64,6 @@ screenshots/
 
 # Sidecar worktree state files
 .sidecar/
+
+# Sidecar worktree state files
+.sidecar-base

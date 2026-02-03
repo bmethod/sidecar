@@ -443,8 +443,9 @@ func (p *Plugin) handlePaneDividerDrag(action mouse.MouseAction) (*Plugin, tea.C
 // handlePreviewSelectionDrag handles drag-to-select in the preview pane.
 func (p *Plugin) handlePreviewSelectionDrag(action mouse.MouseAction) (*Plugin, tea.Cmd) {
 	// Calculate Y offset to preview content
+	// Must match renderNormalPanes() inputBarHeight calculation exactly
 	inputBarHeight := 0
-	if p.searchMode || p.contentSearchMode || p.fileOpMode != FileOpNone {
+	if p.contentSearchMode || p.fileOpMode != FileOpNone || p.lineJumpMode {
 		inputBarHeight = 1
 		if p.fileOpMode != FileOpNone && p.fileOpError != "" {
 			inputBarHeight = 2
