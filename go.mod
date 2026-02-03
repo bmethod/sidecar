@@ -12,6 +12,7 @@ require (
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/charmbracelet/x/ansi v0.11.3
+	github.com/charmbracelet/x/cellbuf v0.0.14
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/marcus/td v0.29.0
 	github.com/mattn/go-runewidth v0.0.19
@@ -26,7 +27,6 @@ require (
 	github.com/catppuccin/go v0.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/huh v0.8.0 // indirect
-	github.com/charmbracelet/x/cellbuf v0.0.14 // indirect
 	github.com/charmbracelet/x/conpty v0.2.0 // indirect
 	github.com/charmbracelet/x/exp/golden v0.0.0-20251215102626-e0db08df7383 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20251215102626-e0db08df7383 // indirect

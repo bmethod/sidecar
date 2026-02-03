@@ -2,6 +2,19 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.63.0] - 2026-02-02
+
+### Features
+
+- Character-level text selection in file browser
+- Shared text selection module extracted to internal/ui
+- Documentation migrated to sidecar.haplab.com with Haplab branding
+
+### Bug Fixes
+
+- Fix files line swallowing in file browser
+- Fix text selection in line-wrapped files
+
 ## [v0.62.0] - 2026-02-02
 
 ### Features
