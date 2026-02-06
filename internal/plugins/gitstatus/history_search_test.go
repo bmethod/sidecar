@@ -156,3 +156,25 @@ func TestUpdateHistorySearch(t *testing.T) {
 		t.Errorf("expected 1 match, got %d", len(p.historySearchState.Matches))
 	}
 }
+
+func TestFocusContextSearchModals(t *testing.T) {
+	p := &Plugin{
+		tree: &FileTree{},
+	}
+
+	p.historySearchMode = true
+	if got := p.FocusContext(); got != "git-history-search" {
+		t.Fatalf("history search context = %q, want %q", got, "git-history-search")
+	}
+
+	p.historySearchMode = false
+	p.pathFilterMode = true
+	if got := p.FocusContext(); got != "git-path-filter" {
+		t.Fatalf("path filter context = %q, want %q", got, "git-path-filter")
+	}
+
+	p.historySearchMode = true
+	if got := p.FocusContext(); got != "git-history-search" {
+		t.Fatalf("expected history search context precedence, got %q", got)
+	}
+}

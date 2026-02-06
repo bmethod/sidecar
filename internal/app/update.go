@@ -1340,7 +1340,8 @@ func isRootContext(ctx string) bool {
 func isTextInputContext(ctx string) bool {
 	switch ctx {
 	case "git-commit",
-		"conversations-search", "conversations-filter",
+		"git-history-search", "git-path-filter",
+		"conversations-search", "conversations-filter", "conversations-content-search",
 		"file-browser-search", "file-browser-content-search",
 		"file-browser-quick-open", "file-browser-file-op",
 		"file-browser-project-search",

@@ -90,8 +90,11 @@ func TestIsTextInputContext(t *testing.T) {
 	}{
 		// Text input contexts - block `, ~, 1-4 for typing
 		{"git-commit", true},
+		{"git-history-search", true},
+		{"git-path-filter", true},
 		{"conversations-search", true},
 		{"conversations-filter", true},
+		{"conversations-content-search", true},
 		{"file-browser-search", true},
 		{"file-browser-content-search", true},
 		{"file-browser-quick-open", true},

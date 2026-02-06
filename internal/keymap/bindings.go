@@ -89,6 +89,20 @@ func DefaultBindings() []Binding {
 		{Key: "L", Command: "pull", Context: "git-status-commits"},
 		{Key: "\\", Command: "toggle-sidebar", Context: "git-status-commits"},
 
+		// Git history search modal context
+		{Key: "enter", Command: "select", Context: "git-history-search"},
+		{Key: "esc", Command: "cancel", Context: "git-history-search"},
+		{Key: "j", Command: "navigate", Context: "git-history-search"},
+		{Key: "k", Command: "navigate", Context: "git-history-search"},
+		{Key: "down", Command: "navigate", Context: "git-history-search"},
+		{Key: "up", Command: "navigate", Context: "git-history-search"},
+		{Key: "alt+r", Command: "toggle-regex", Context: "git-history-search"},
+		{Key: "alt+c", Command: "toggle-case", Context: "git-history-search"},
+
+		// Git path filter modal context
+		{Key: "enter", Command: "apply-filter", Context: "git-path-filter"},
+		{Key: "esc", Command: "cancel", Context: "git-path-filter"},
+
 		// Git status diff context (inline)
 		{Key: "j", Command: "scroll-down", Context: "git-status-diff"},
 		{Key: "k", Command: "scroll-up", Context: "git-status-diff"},

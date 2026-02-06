@@ -856,6 +856,15 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "open-in-github", Name: "GitHub", Description: "Open commit in GitHub", Category: plugin.CategoryActions, Context: "git-status-commits", Priority: 3},
 		{ID: "toggle-graph", Name: "Graph", Description: "Toggle commit graph display", Category: plugin.CategoryView, Context: "git-status-commits", Priority: 2},
 		{ID: "toggle-sidebar", Name: "Sidebar", Description: "Toggle sidebar visibility", Category: plugin.CategoryView, Context: "git-status-commits", Priority: 5},
+		// git-history-search context (commit search modal)
+		{ID: "select", Name: "Select", Description: "Jump to selected match", Category: plugin.CategoryActions, Context: "git-history-search", Priority: 1},
+		{ID: "cancel", Name: "Cancel", Description: "Close search", Category: plugin.CategoryActions, Context: "git-history-search", Priority: 1},
+		{ID: "navigate", Name: "Nav", Description: "Move through matches", Category: plugin.CategoryNavigation, Context: "git-history-search", Priority: 2},
+		{ID: "toggle-regex", Name: "Regex", Description: "Toggle regex mode", Category: plugin.CategoryView, Context: "git-history-search", Priority: 3},
+		{ID: "toggle-case", Name: "Case", Description: "Toggle case sensitivity", Category: plugin.CategoryView, Context: "git-history-search", Priority: 3},
+		// git-path-filter context (path filter modal)
+		{ID: "apply-filter", Name: "Apply", Description: "Apply path filter", Category: plugin.CategorySearch, Context: "git-path-filter", Priority: 1},
+		{ID: "cancel", Name: "Cancel", Description: "Close path filter", Category: plugin.CategoryActions, Context: "git-path-filter", Priority: 1},
 		// git-commit-preview context (commit preview in right pane)
 		{ID: "view-diff", Name: "Diff", Description: "View file diff", Category: plugin.CategoryView, Context: "git-commit-preview", Priority: 1},
 		{ID: "back", Name: "Back", Description: "Return to sidebar", Category: plugin.CategoryNavigation, Context: "git-commit-preview", Priority: 1},
@@ -904,6 +913,13 @@ func (p *Plugin) Commands() []plugin.Command {
 
 // FocusContext returns the current focus context.
 func (p *Plugin) FocusContext() string {
+	if p.historySearchMode {
+		return "git-history-search"
+	}
+	if p.pathFilterMode {
+		return "git-path-filter"
+	}
+
 	switch p.viewMode {
 	case ViewModeDiff:
 		return "git-diff"
