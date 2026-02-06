@@ -42,6 +42,10 @@ func DefaultBindings() []Binding {
 		{Key: "ctrl+p", Command: "cursor-up", Context: "project-switcher"},
 
 		// Git status context
+		{Key: "i", Command: "init-repo", Context: "git-no-repo"},
+		{Key: "enter", Command: "init-repo", Context: "git-no-repo"},
+		{Key: "r", Command: "refresh", Context: "git-no-repo"},
+
 		{Key: "j", Command: "cursor-down", Context: "git-status"},
 		{Key: "k", Command: "cursor-up", Context: "git-status"},
 		{Key: "tab", Command: "switch-pane", Context: "git-status"},

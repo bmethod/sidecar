@@ -55,12 +55,14 @@ const commitHistoryPageSize = 50
 
 // Plugin implements the git status plugin.
 type Plugin struct {
-	ctx      *plugin.Context
-	repoRoot string // Resolved git repo root (may differ from ctx.WorkDir if started in subdirectory)
-	tree     *FileTree
-	focused   bool
-	cursor    int
-	scrollOff int
+	ctx                *plugin.Context
+	repoRoot           string // Resolved git repo root (may differ from ctx.WorkDir if started in subdirectory)
+	hasRepo            bool
+	repoInitInProgress bool
+	tree               *FileTree
+	focused            bool
+	cursor             int
+	scrollOff          int
 
 	// View mode state machine
 	viewMode ViewMode
@@ -77,9 +79,9 @@ type Plugin struct {
 	moreCommitsAvailable bool      // Whether more commits are available to load
 
 	// Inline diff state (for three-pane view)
-	selectedDiffFile     string       // File being previewed in diff pane
-	forceNextDiffReload  bool         // Bypass dedup on next autoLoadDiff call
-	diffPaneScroll       int          // Vertical scroll for inline diff
+	selectedDiffFile    string       // File being previewed in diff pane
+	forceNextDiffReload bool         // Bypass dedup on next autoLoadDiff call
+	diffPaneScroll      int          // Vertical scroll for inline diff
 	diffPaneHorizScroll int          // Horizontal scroll for inline diff
 	diffPaneParsedDiff  *ParsedDiff  // Parsed diff for inline view
 	diffPaneViewMode    DiffViewMode // Unified or side-by-side for inline diff
@@ -90,21 +92,21 @@ type Plugin struct {
 	previewCommitScroll int     // Scroll offset for preview content
 
 	// Diff state (for full-screen diff view)
-	showDiff       bool
-	diffContent    string
-	diffFile       string
-	diffScroll     int
-	diffRaw        string       // Raw diff before delta processing
-	diffCommit          string // Commit hash if viewing commit diff
-	diffCommitSubject   string // Subject of commit being diffed (for breadcrumb)
-	diffCommitShortHash string // Short hash of commit being diffed (for breadcrumb)
-	diffViewMode   DiffViewMode // Line or side-by-side
-	diffHorizOff   int          // Horizontal scroll for side-by-side
-	parsedDiff     *ParsedDiff  // Parsed diff for enhanced rendering
-	diffReturnMode ViewMode     // View mode to return to on esc
-	diffLoaded      bool         // True once diff load completes (distinguishes loading vs empty)
-	diffWrapEnabled bool         // Wrap long lines instead of truncating
-	diffBackWidth   int          // Width of back button for hit region (set during render)
+	showDiff            bool
+	diffContent         string
+	diffFile            string
+	diffScroll          int
+	diffRaw             string       // Raw diff before delta processing
+	diffCommit          string       // Commit hash if viewing commit diff
+	diffCommitSubject   string       // Subject of commit being diffed (for breadcrumb)
+	diffCommitShortHash string       // Short hash of commit being diffed (for breadcrumb)
+	diffViewMode        DiffViewMode // Line or side-by-side
+	diffHorizOff        int          // Horizontal scroll for side-by-side
+	parsedDiff          *ParsedDiff  // Parsed diff for enhanced rendering
+	diffReturnMode      ViewMode     // View mode to return to on esc
+	diffLoaded          bool         // True once diff load completes (distinguishes loading vs empty)
+	diffWrapEnabled     bool         // Wrap long lines instead of truncating
+	diffBackWidth       int          // Width of back button for hit region (set during render)
 
 	// Push status state
 	pushStatus              *PushStatus
@@ -252,14 +254,12 @@ func resolveGitRoot(dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+func (p *Plugin) inNoRepoMode() bool {
+	return p.ctx != nil && !p.hasRepo
+}
+
 // Init initializes the plugin with context.
 func (p *Plugin) Init(ctx *plugin.Context) error {
-	// Resolve git repo root (works from any subdirectory)
-	root, err := resolveGitRoot(ctx.WorkDir)
-	if err != nil {
-		return err // Not a git repo, silently degrade
-	}
-
 	// Preserve resources that are expensive to recreate or have no project-specific state
 	mouseHandler := p.mouseHandler
 	truncateCache := p.truncateCache
@@ -279,8 +279,7 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 
 	// Set up context and repo
 	p.ctx = ctx
-	p.repoRoot = root
-	p.tree = NewFileTree(root)
+	p.tree = NewFileTree(ctx.WorkDir)
 
 	// Load user preferences from state
 	if state.GetGitDiffMode() == "side-by-side" {
@@ -292,11 +291,27 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.showCommitGraph = state.GetGitGraphEnabled()
 	p.diffWrapEnabled = state.GetLineWrapEnabled()
 
+	// Resolve git repo root (works from any subdirectory).
+	// If no repo exists, keep plugin active in a dedicated "no repo" state.
+	root, err := resolveGitRoot(ctx.WorkDir)
+	if err != nil {
+		p.hasRepo = false
+		p.repoRoot = ""
+		return nil
+	}
+
+	p.hasRepo = true
+	p.repoRoot = root
+	p.tree = NewFileTree(root)
+
 	return nil
 }
 
 // Start begins plugin operation.
 func (p *Plugin) Start() tea.Cmd {
+	if !p.hasRepo {
+		return nil
+	}
 	return tea.Batch(
 		p.refresh(),
 		p.startWatcher(),
@@ -315,6 +330,9 @@ func (p *Plugin) Stop() {
 func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if p.inNoRepoMode() {
+			return p.updateNoRepo(msg)
+		}
 		// Handle modal overlays first
 		if p.historySearchMode {
 			return p.updateHistorySearch(msg)
@@ -346,6 +364,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		if p.inNoRepoMode() {
+			return p, nil
+		}
 		// Handle mouse events based on view mode
 		switch p.viewMode {
 		case ViewModeStatus:
@@ -371,18 +392,33 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case app.RefreshMsg:
+		if p.inNoRepoMode() {
+			return p, p.detectRepo()
+		}
 		return p, p.refresh()
 
 	case app.PluginFocusedMsg:
+		if p.inNoRepoMode() {
+			return p, p.detectRepo()
+		}
 		// Refresh data when navigating to this plugin
 		p.lastRefresh = time.Now()
 		return p, tea.Batch(p.refresh(), p.loadRecentCommits())
 
 	case WatchStartedMsg:
+		if p.inNoRepoMode() {
+			if msg.Watcher != nil {
+				msg.Watcher.Stop()
+			}
+			return p, nil
+		}
 		p.watcher = msg.Watcher
 		return p, p.listenForWatchEvents()
 
 	case WatchEventMsg:
+		if p.inNoRepoMode() {
+			return p, nil
+		}
 		// File system changed, refresh and continue listening (debounce 500ms)
 		if time.Since(p.lastRefresh) < 500*time.Millisecond {
 			return p, p.listenForWatchEvents() // Skip refresh, keep listening
@@ -391,6 +427,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, tea.Batch(p.refresh(), p.loadRecentCommits(), p.listenForWatchEvents())
 
 	case RefreshDoneMsg:
+		if p.inNoRepoMode() {
+			return p, nil
+		}
 		// Clamp cursor to valid range if files changed
 		maxCursor := p.totalSelectableItems() - 1
 		if maxCursor < 0 {
@@ -720,6 +759,60 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.pullSuccess = false
 		return p, nil
 
+	case RepoDetectedMsg:
+		if plugin.IsStale(p.ctx, msg) {
+			return p, nil
+		}
+		if msg.Root == "" {
+			return p, nil
+		}
+		if err := p.Init(p.ctx); err != nil {
+			return p, nil
+		}
+		return p, tea.Batch(p.refresh(), p.startWatcher(), p.loadRecentCommits())
+
+	case RepoInitDoneMsg:
+		if plugin.IsStale(p.ctx, msg) {
+			return p, nil
+		}
+		p.repoInitInProgress = false
+		if msg.Root == "" {
+			errMsg := "Failed to initialize repository"
+			if msg.Err != nil {
+				errMsg = msg.Err.Error()
+			}
+			return p, func() tea.Msg {
+				return app.ToastMsg{Message: errMsg, Duration: 3 * time.Second, IsError: true}
+			}
+		}
+		if err := p.Init(p.ctx); err != nil {
+			return p, func() tea.Msg {
+				return app.ToastMsg{Message: "Repository initialized but refresh failed", Duration: 3 * time.Second, IsError: true}
+			}
+		}
+		if msg.Err != nil {
+			return p, tea.Batch(
+				p.refresh(),
+				p.startWatcher(),
+				p.loadRecentCommits(),
+				func() tea.Msg {
+					return app.ToastMsg{
+						Message:  "Repository initialized; failed to update .gitignore",
+						Duration: 3 * time.Second,
+						IsError:  true,
+					}
+				},
+			)
+		}
+		return p, tea.Batch(
+			p.refresh(),
+			p.startWatcher(),
+			p.loadRecentCommits(),
+			func() tea.Msg {
+				return app.ToastMsg{Message: "Initialized git repository", Duration: 2 * time.Second}
+			},
+		)
+
 	case StashPopConfirmMsg:
 		// Show stash pop confirmation modal
 		p.stashPopItem = msg.Stash
@@ -767,33 +860,37 @@ func (p *Plugin) View(width, height int) string {
 	p.height = height
 
 	var content string
-	switch p.viewMode {
-	case ViewModeDiff:
-		// Use two-pane layout when sidebar is visible, otherwise full-width diff
-		if p.sidebarVisible {
-			content = p.renderDiffTwoPane()
-		} else {
-			content = p.renderDiffModal()
+	if p.inNoRepoMode() {
+		content = p.renderNoRepoView()
+	} else {
+		switch p.viewMode {
+		case ViewModeDiff:
+			// Use two-pane layout when sidebar is visible, otherwise full-width diff
+			if p.sidebarVisible {
+				content = p.renderDiffTwoPane()
+			} else {
+				content = p.renderDiffModal()
+			}
+		case ViewModeCommit:
+			content = p.renderCommitModal()
+		case ViewModePushMenu:
+			content = p.renderPushMenu()
+		case ViewModePullMenu:
+			content = p.renderPullMenu()
+		case ViewModePullConflict:
+			content = p.renderPullConflict()
+		case ViewModeConfirmDiscard:
+			content = p.renderConfirmDiscard()
+		case ViewModeConfirmStashPop:
+			content = p.renderConfirmStashPop()
+		case ViewModeBranchPicker:
+			content = p.renderBranchPicker()
+		case ViewModeError:
+			content = p.renderErrorModal()
+		default:
+			// Use three-pane layout for status view
+			content = p.renderThreePaneView()
 		}
-	case ViewModeCommit:
-		content = p.renderCommitModal()
-	case ViewModePushMenu:
-		content = p.renderPushMenu()
-	case ViewModePullMenu:
-		content = p.renderPullMenu()
-	case ViewModePullConflict:
-		content = p.renderPullConflict()
-	case ViewModeConfirmDiscard:
-		content = p.renderConfirmDiscard()
-	case ViewModeConfirmStashPop:
-		content = p.renderConfirmStashPop()
-	case ViewModeBranchPicker:
-		content = p.renderBranchPicker()
-	case ViewModeError:
-		content = p.renderErrorModal()
-	default:
-		// Use three-pane layout for status view
-		content = p.renderThreePaneView()
 	}
 
 	// Overlay modals if active
@@ -820,6 +917,9 @@ func (p *Plugin) SetFocused(f bool) { p.focused = f }
 // Commands returns the available commands.
 func (p *Plugin) Commands() []plugin.Command {
 	return []plugin.Command{
+		// git-no-repo context
+		{ID: "init-repo", Name: "Init", Description: "Initialize a git repository", Category: plugin.CategoryGit, Context: "git-no-repo", Priority: 1},
+		{ID: "refresh", Name: "Retry", Description: "Re-check for a git repository", Category: plugin.CategoryActions, Context: "git-no-repo", Priority: 2},
 		// git-status context (files)
 		{ID: "stage-file", Name: "Stage", Description: "Stage selected file for commit", Category: plugin.CategoryGit, Context: "git-status", Priority: 1},
 		{ID: "unstage-file", Name: "Unstage", Description: "Remove file from staging area", Category: plugin.CategoryGit, Context: "git-status", Priority: 1},
@@ -913,6 +1013,9 @@ func (p *Plugin) Commands() []plugin.Command {
 
 // FocusContext returns the current focus context.
 func (p *Plugin) FocusContext() string {
+	if p.inNoRepoMode() {
+		return "git-no-repo"
+	}
 	if p.historySearchMode {
 		return "git-history-search"
 	}
@@ -959,6 +1062,11 @@ func (p *Plugin) ConsumesTextInput() bool {
 
 // Diagnostics returns plugin health info.
 func (p *Plugin) Diagnostics() []plugin.Diagnostic {
+	if p.inNoRepoMode() {
+		return []plugin.Diagnostic{
+			{ID: "git-status", Status: "warn", Detail: "No git repository"},
+		}
+	}
 	status := "ok"
 	detail := p.tree.Summary()
 	if p.tree.TotalCount() == 0 {
@@ -971,6 +1079,9 @@ func (p *Plugin) Diagnostics() []plugin.Diagnostic {
 
 // refresh reloads the git status.
 func (p *Plugin) refresh() tea.Cmd {
+	if !p.hasRepo || p.tree == nil {
+		return nil
+	}
 	return func() tea.Msg {
 		if err := p.tree.Refresh(); err != nil {
 			return ErrorMsg{Err: err}
@@ -981,6 +1092,9 @@ func (p *Plugin) refresh() tea.Cmd {
 
 // startWatcher starts the file system watcher.
 func (p *Plugin) startWatcher() tea.Cmd {
+	if !p.hasRepo || p.repoRoot == "" {
+		return nil
+	}
 	return func() tea.Msg {
 		watcher, err := NewWatcher(p.repoRoot)
 		if err != nil {
@@ -1226,7 +1340,6 @@ type FetchSuccessClearMsg struct{}
 
 // PullSuccessClearMsg is sent to clear the pull success indicator.
 type PullSuccessClearMsg struct{}
-
 
 // initCommitTextarea initializes the commit message textarea.
 func (p *Plugin) initCommitTextarea() {
