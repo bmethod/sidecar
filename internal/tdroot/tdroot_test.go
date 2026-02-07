@@ -2,7 +2,9 @@ package tdroot
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -160,5 +162,130 @@ func TestCreateTDRoot_Overwrite(t *testing.T) {
 	result := ResolveTDRoot(tmpDir)
 	if result != newTarget {
 		t.Errorf("expected %q, got %q", newTarget, result)
+	}
+}
+
+// --- helpers for worktree tests ---
+
+// initGitRepo creates a temp dir with a git repo containing one empty commit.
+// Returns the repo path. Cleanup is handled by t.Cleanup.
+func initGitRepo(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "tdroot-wt-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	runGit(t, dir, "init")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
+	return dir
+}
+
+// runGit runs a git command in the given dir, failing the test on error.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test",
+		"GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test",
+		"GIT_COMMITTER_EMAIL=test@test",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
+	}
+}
+
+// assertSamePath compares two paths after resolving symlinks (handles macOS /private/tmp).
+func assertSamePath(t *testing.T, want, got string) {
+	t.Helper()
+	wantResolved, err := filepath.EvalSymlinks(want)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", want, err)
+	}
+	gotResolved, err := filepath.EvalSymlinks(got)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", got, err)
+	}
+	if wantResolved != gotResolved {
+		t.Errorf("paths differ:\n  want: %s\n  got:  %s", wantResolved, gotResolved)
+	}
+}
+
+// --- worktree tests ---
+
+func TestResolveTDRoot_ExternalWorktreeFindsMainTodos(t *testing.T) {
+	mainRepo := initGitRepo(t)
+
+	// Create .todos dir in main repo
+	if err := os.MkdirAll(filepath.Join(mainRepo, TodosDir), 0755); err != nil {
+		t.Fatalf("mkdir .todos: %v", err)
+	}
+
+	// Create linked worktree
+	wtPath := filepath.Join(filepath.Dir(mainRepo), "wt-find-todos")
+	runGit(t, mainRepo, "worktree", "add", wtPath, "-b", "test-branch")
+	t.Cleanup(func() { os.RemoveAll(wtPath) })
+
+	result := ResolveTDRoot(wtPath)
+	assertSamePath(t, mainRepo, result)
+}
+
+func TestResolveTDRoot_ExternalWorktreeFollowsMainTdRoot(t *testing.T) {
+	mainRepo := initGitRepo(t)
+
+	// Create a shared root dir and write .td-root in main repo pointing to it
+	sharedRoot, err := os.MkdirTemp("", "tdroot-shared-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp shared: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sharedRoot) })
+
+	if err := CreateTDRoot(mainRepo, sharedRoot); err != nil {
+		t.Fatalf("CreateTDRoot: %v", err)
+	}
+
+	// Create linked worktree
+	wtPath := filepath.Join(filepath.Dir(mainRepo), "wt-follow-tdroot")
+	runGit(t, mainRepo, "worktree", "add", wtPath, "-b", "test-branch")
+	t.Cleanup(func() { os.RemoveAll(wtPath) })
+
+	result := ResolveTDRoot(wtPath)
+	assertSamePath(t, sharedRoot, result)
+}
+
+func TestResolveDBPath_ExternalWorktree(t *testing.T) {
+	mainRepo := initGitRepo(t)
+
+	// Create .todos dir in main repo
+	if err := os.MkdirAll(filepath.Join(mainRepo, TodosDir), 0755); err != nil {
+		t.Fatalf("mkdir .todos: %v", err)
+	}
+
+	// Create linked worktree
+	wtPath := filepath.Join(filepath.Dir(mainRepo), "wt-dbpath")
+	runGit(t, mainRepo, "worktree", "add", wtPath, "-b", "test-branch")
+	t.Cleanup(func() { os.RemoveAll(wtPath) })
+
+	result := ResolveDBPath(wtPath)
+
+	// Resolve mainRepo through symlinks for comparison (macOS /tmp -> /private/tmp)
+	mainRepoResolved, err := filepath.EvalSymlinks(mainRepo)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	expected := filepath.Join(mainRepoResolved, TodosDir, DBFile)
+
+	// The DB file doesn't exist, so resolve just the repo root portion of the result
+	gotRepoRoot := filepath.Dir(filepath.Dir(result))
+	gotRepoRootResolved, err := filepath.EvalSymlinks(gotRepoRoot)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", gotRepoRoot, err)
+	}
+	got := filepath.Join(gotRepoRootResolved, TodosDir, DBFile)
+	if expected != got {
+		t.Errorf("paths differ:\n  want: %s\n  got:  %s", expected, got)
 	}
 }
