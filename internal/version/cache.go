@@ -66,13 +66,11 @@ func SaveCache(entry *CacheEntry) error {
 }
 
 // IsCacheValid checks if cache exists and is not expired.
-// Also invalidates if user version changed (upgrade or downgrade).
-func IsCacheValid(entry *CacheEntry, currentVersion string) bool {
+// Only checks TTL - local version changes (rebuilds) don't invalidate cache.
+// This prevents false "update available" notifications for source builds
+// where the local version string differs from upstream release tags.
+func IsCacheValid(entry *CacheEntry) bool {
 	if entry == nil {
-		return false
-	}
-	// Invalidate if current version changed (handles upgrade or downgrade)
-	if entry.CurrentVersion != currentVersion {
 		return false
 	}
 	if time.Since(entry.CheckedAt) >= cacheTTL {

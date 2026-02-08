@@ -43,12 +43,18 @@ func updateCommand(version string, method InstallMethod) string {
 }
 
 // CheckAsync returns a Bubble Tea command that checks for updates in background.
+// Compares upstream releases against the last known upstream version (from cache)
+// rather than the local build version, so source builds with custom version
+// strings don't trigger false "update available" notifications.
 func CheckAsync(currentVersion string) tea.Cmd {
 	return func() tea.Msg {
 		method := DetectInstallMethod()
 
-		// Check cache first
-		if cached, err := LoadCache(); err == nil && IsCacheValid(cached, currentVersion) {
+		// Load existing cache for baseline comparison
+		cached, cacheErr := LoadCache()
+
+		// If cache is valid (not expired), use cached result
+		if cacheErr == nil && IsCacheValid(cached) {
 			if cached.HasUpdate {
 				return UpdateAvailableMsg{
 					CurrentVersion: currentVersion,
@@ -60,27 +66,35 @@ func CheckAsync(currentVersion string) tea.Cmd {
 			return nil // up-to-date, cached
 		}
 
-		// Cache miss or invalid, fetch from GitHub
-		result := Check(currentVersion)
+		// Determine if we have a prior baseline (previous upstream version).
+		// Without a baseline (first run), we just establish one without notifying.
+		hasPriorBaseline := cacheErr == nil && cached != nil && cached.LatestVersion != ""
 
-		// Only cache successful checks (don't cache network errors)
+		// Fetch latest release from GitHub
+		result := FetchLatestRelease(repoOwner, repoName)
+
 		if result.Error == nil {
+			hasUpdate := false
+			if hasPriorBaseline {
+				hasUpdate = isNewer(result.LatestVersion, cached.LatestVersion)
+			}
+
 			_ = SaveCache(&CacheEntry{
 				LatestVersion:  result.LatestVersion,
 				CurrentVersion: currentVersion,
 				CheckedAt:      time.Now(),
-				HasUpdate:      result.HasUpdate,
+				HasUpdate:      hasUpdate,
 			})
-		}
 
-		if result.HasUpdate {
-			return UpdateAvailableMsg{
-				CurrentVersion: currentVersion,
-				LatestVersion:  result.LatestVersion,
-				UpdateCommand:  updateCommand(result.LatestVersion, method),
-				ReleaseNotes:   result.ReleaseNotes,
-				ReleaseURL:     result.UpdateURL,
-				InstallMethod:  method,
+			if hasUpdate {
+				return UpdateAvailableMsg{
+					CurrentVersion: currentVersion,
+					LatestVersion:  result.LatestVersion,
+					UpdateCommand:  updateCommand(result.LatestVersion, method),
+					ReleaseNotes:   result.ReleaseNotes,
+					ReleaseURL:     result.UpdateURL,
+					InstallMethod:  method,
+				}
 			}
 		}
 
@@ -88,27 +102,39 @@ func CheckAsync(currentVersion string) tea.Cmd {
 	}
 }
 
-// ForceCheckAsync checks for updates, ignoring the cache.
+// ForceCheckAsync checks for updates, ignoring the cache TTL.
+// Still uses cached upstream version as baseline for comparison.
 func ForceCheckAsync(currentVersion string) tea.Cmd {
 	return func() tea.Msg {
 		method := DetectInstallMethod()
-		result := Check(currentVersion)
+
+		// Use cached upstream version as baseline if available
+		cached, cacheErr := LoadCache()
+		hasPriorBaseline := cacheErr == nil && cached != nil && cached.LatestVersion != ""
+
+		result := FetchLatestRelease(repoOwner, repoName)
 		if result.Error == nil {
+			hasUpdate := false
+			if hasPriorBaseline {
+				hasUpdate = isNewer(result.LatestVersion, cached.LatestVersion)
+			}
+
 			_ = SaveCache(&CacheEntry{
 				LatestVersion:  result.LatestVersion,
 				CurrentVersion: currentVersion,
 				CheckedAt:      time.Now(),
-				HasUpdate:      result.HasUpdate,
+				HasUpdate:      hasUpdate,
 			})
-		}
-		if result.HasUpdate {
-			return UpdateAvailableMsg{
-				CurrentVersion: currentVersion,
-				LatestVersion:  result.LatestVersion,
-				UpdateCommand:  updateCommand(result.LatestVersion, method),
-				ReleaseNotes:   result.ReleaseNotes,
-				ReleaseURL:     result.UpdateURL,
-				InstallMethod:  method,
+
+			if hasUpdate {
+				return UpdateAvailableMsg{
+					CurrentVersion: currentVersion,
+					LatestVersion:  result.LatestVersion,
+					UpdateCommand:  updateCommand(result.LatestVersion, method),
+					ReleaseNotes:   result.ReleaseNotes,
+					ReleaseURL:     result.UpdateURL,
+					InstallMethod:  method,
+				}
 			}
 		}
 		return nil
@@ -149,8 +175,11 @@ func CheckTdAsync() tea.Cmd {
 			return TdVersionMsg{Installed: false}
 		}
 
-		// Check cache first
-		if cached, err := LoadTdCache(); err == nil && IsCacheValid(cached, tdVersion) {
+		// Load existing cache for baseline comparison
+		cached, cacheErr := LoadTdCache()
+
+		// If cache is valid, use cached result
+		if cacheErr == nil && IsCacheValid(cached) {
 			return TdVersionMsg{
 				Installed:      true,
 				CurrentVersion: tdVersion,
@@ -159,16 +188,22 @@ func CheckTdAsync() tea.Cmd {
 			}
 		}
 
-		// Cache miss or invalid, fetch from GitHub
-		result := CheckTd(tdVersion)
+		// Use cached upstream version as baseline if available
+		hasPriorBaseline := cacheErr == nil && cached != nil && cached.LatestVersion != ""
 
-		// Only cache successful checks
+		// Cache miss or expired, fetch from GitHub
+		result := FetchLatestRelease(tdRepoOwner, tdRepoName)
+
+		hasUpdate := false
 		if result.Error == nil {
+			if hasPriorBaseline {
+				hasUpdate = isNewer(result.LatestVersion, cached.LatestVersion)
+			}
 			_ = SaveTdCache(&CacheEntry{
 				LatestVersion:  result.LatestVersion,
 				CurrentVersion: tdVersion,
 				CheckedAt:      time.Now(),
-				HasUpdate:      result.HasUpdate,
+				HasUpdate:      hasUpdate,
 			})
 		}
 
@@ -176,32 +211,41 @@ func CheckTdAsync() tea.Cmd {
 			Installed:      true,
 			CurrentVersion: tdVersion,
 			LatestVersion:  result.LatestVersion,
-			HasUpdate:      result.HasUpdate,
+			HasUpdate:      hasUpdate,
 		}
 	}
 }
 
-// ForceCheckTdAsync checks for td updates, ignoring the cache.
+// ForceCheckTdAsync checks for td updates, ignoring the cache TTL.
 func ForceCheckTdAsync() tea.Cmd {
 	return func() tea.Msg {
 		tdVersion := GetTdVersion()
 		if tdVersion == "" {
 			return TdVersionMsg{Installed: false}
 		}
-		result := CheckTd(tdVersion)
+
+		// Use cached upstream version as baseline if available
+		cached, cacheErr := LoadTdCache()
+		hasPriorBaseline := cacheErr == nil && cached != nil && cached.LatestVersion != ""
+
+		result := FetchLatestRelease(tdRepoOwner, tdRepoName)
+		hasUpdate := false
 		if result.Error == nil {
+			if hasPriorBaseline {
+				hasUpdate = isNewer(result.LatestVersion, cached.LatestVersion)
+			}
 			_ = SaveTdCache(&CacheEntry{
 				LatestVersion:  result.LatestVersion,
 				CurrentVersion: tdVersion,
 				CheckedAt:      time.Now(),
-				HasUpdate:      result.HasUpdate,
+				HasUpdate:      hasUpdate,
 			})
 		}
 		return TdVersionMsg{
 			Installed:      true,
 			CurrentVersion: tdVersion,
 			LatestVersion:  result.LatestVersion,
-			HasUpdate:      result.HasUpdate,
+			HasUpdate:      hasUpdate,
 		}
 	}
 }

@@ -11,77 +11,60 @@ func TestIsCacheValid(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name           string
-		entry          *CacheEntry
-		currentVersion string
-		want           bool
+		name  string
+		entry *CacheEntry
+		want  bool
 	}{
 		{
-			name:           "nil entry",
-			entry:          nil,
-			currentVersion: "v1.0.0",
-			want:           false,
+			name:  "nil entry",
+			entry: nil,
+			want:  false,
 		},
 		{
-			name: "valid cache - same version, recent",
+			name: "valid cache - recent",
 			entry: &CacheEntry{
 				LatestVersion:  "v1.1.0",
 				CurrentVersion: "v1.0.0",
 				CheckedAt:      now,
 				HasUpdate:      true,
 			},
-			currentVersion: "v1.0.0",
-			want:           true,
+			want: true,
 		},
 		{
-			name: "expired cache - same version, old timestamp",
+			name: "expired cache - old timestamp",
 			entry: &CacheEntry{
 				LatestVersion:  "v1.1.0",
 				CurrentVersion: "v1.0.0",
 				CheckedAt:      now.Add(-4 * time.Hour), // older than 3h TTL
 				HasUpdate:      true,
 			},
-			currentVersion: "v1.0.0",
-			want:           false,
+			want: false,
 		},
 		{
-			name: "invalid cache - version mismatch (upgrade)",
+			name: "valid cache - different local version (rebuild)",
 			entry: &CacheEntry{
 				LatestVersion:  "v1.1.0",
 				CurrentVersion: "v1.0.0",
 				CheckedAt:      now,
 				HasUpdate:      true,
 			},
-			currentVersion: "v1.1.0",
-			want:           false,
+			want: true, // local version changes should NOT invalidate cache
 		},
 		{
-			name: "invalid cache - version mismatch (downgrade)",
+			name: "boundary - just under TTL",
 			entry: &CacheEntry{
 				LatestVersion:  "v1.1.0",
 				CurrentVersion: "v1.0.0",
-				CheckedAt:      now,
+				CheckedAt:      now.Add(-3*time.Hour + time.Minute),
 				HasUpdate:      true,
 			},
-			currentVersion: "v0.9.0",
-			want:           false,
-		},
-		{
-			name: "boundary - exactly at TTL",
-			entry: &CacheEntry{
-				LatestVersion:  "v1.1.0",
-				CurrentVersion: "v1.0.0",
-				CheckedAt:      now.Add(-3*time.Hour + time.Minute), // just under TTL
-				HasUpdate:      true,
-			},
-			currentVersion: "v1.0.0",
-			want:           true,
+			want: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsCacheValid(tt.entry, tt.currentVersion)
+			got := IsCacheValid(tt.entry)
 			if got != tt.want {
 				t.Errorf("IsCacheValid() = %v, want %v", got, tt.want)
 			}

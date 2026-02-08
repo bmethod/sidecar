@@ -45,6 +45,39 @@ func CheckTd(currentVersion string) CheckResult {
 	return CheckRepo(tdRepoOwner, tdRepoName, currentVersion)
 }
 
+// FetchLatestRelease fetches the latest release info from GitHub without
+// comparing versions. Used when we only need release metadata (e.g., first
+// run with no cache baseline).
+func FetchLatestRelease(owner, repo string) CheckResult {
+	var result CheckResult
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	url := fmt.Sprintf(apiURL, owner, repo)
+
+	resp, err := client.Get(url)
+	if err != nil {
+		result.Error = err
+		return result
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		result.Error = fmt.Errorf("github api: %s", resp.Status)
+		return result
+	}
+
+	var release Release
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		result.Error = err
+		return result
+	}
+
+	result.LatestVersion = release.TagName
+	result.UpdateURL = release.HTMLURL
+	result.ReleaseNotes = release.Body
+	return result
+}
+
 // CheckRepo fetches the latest release for a repo and compares versions.
 func CheckRepo(owner, repo, currentVersion string) CheckResult {
 	result := CheckResult{CurrentVersion: currentVersion}
