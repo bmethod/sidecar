@@ -880,6 +880,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		if wt != nil {
 			return p.openInGitTab(wt)
 		}
+	case "alt+!", "alt+@", "alt+#", "alt+$", "alt+%", "alt+^", "alt+&", "alt+*", "alt+(":
+	// alt+shift+1 through alt+shift+9 (terminals send shifted symbols)
+		if idx, ok := parseAltShiftNumber(msg.String()); ok {
+			return p.switchToIndex(idx)
+		}
 	default:
 		// Unhandled key in preview pane - flash to indicate attach is needed
 		// Only flash if there's something to attach to (shell or worktree with agent)
@@ -1508,4 +1513,65 @@ func (p *Plugin) openFilePicker() tea.Cmd {
 	p.filePickerIdx = currentIdx
 	p.viewMode = ViewModeFilePicker
 	return nil
+}
+
+// parseAltShiftNumber parses alt+shift+1 through alt+shift+9 key sequences.
+// Terminals send these as alt + shifted symbol (e.g. alt+! for alt+shift+1).
+func parseAltShiftNumber(key string) (int, bool) {
+	symbols := "!@#$%^&*("
+	if len(key) >= 5 && key[:4] == "alt+" {
+		ch := key[4]
+		for i := 0; i < len(symbols); i++ {
+			if ch == symbols[i] {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// switchToIndex jumps to the Nth item (0-based) in the unified sidebar list
+// (shells first, then worktrees). Returns a command to load content for the
+// new selection, or nil if the index is out of range or already selected.
+func (p *Plugin) switchToIndex(idx int) tea.Cmd {
+	shellCount := len(p.shells)
+	worktreeCount := len(p.worktrees)
+	total := shellCount + worktreeCount
+	if idx < 0 || idx >= total {
+		return nil
+	}
+
+	// Determine target
+	targetShellSelected := idx < shellCount
+	targetShellIdx := idx
+	targetWorktreeIdx := idx - shellCount
+
+	// Check if already on target
+	if targetShellSelected == p.shellSelected {
+		if targetShellSelected && p.selectedShellIdx == targetShellIdx {
+			return nil
+		}
+		if !targetShellSelected && p.selectedIdx == targetWorktreeIdx {
+			return nil
+		}
+	}
+
+	// Switch selection
+	p.shellSelected = targetShellSelected
+	if targetShellSelected {
+		p.selectedShellIdx = targetShellIdx
+	} else {
+		p.selectedIdx = targetWorktreeIdx
+	}
+
+	// Reset preview state (same as moveCursor)
+	p.previewOffset = 0
+	p.autoScrollOutput = true
+	p.resetScrollBaseLineCount()
+	p.taskLoading = false
+	p.exitInteractiveMode()
+	p.saveSelectionState()
+	p.ensureVisible()
+
+	return p.loadSelectedContent()
 }

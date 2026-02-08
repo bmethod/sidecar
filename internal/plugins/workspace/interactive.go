@@ -884,6 +884,20 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 		return tea.Batch(cmds...)
 	}
 
+	// Alt+number: quick-switch to another workspace from interactive mode
+	if idx, ok := parseAltShiftNumber(msg.String()); ok {
+		p.exitInteractiveMode()
+		if cmd := p.switchToIndex(idx); cmd != nil {
+			enterCmd := p.enterInteractiveMode()
+			if enterCmd != nil {
+				return tea.Batch(cmd, enterCmd)
+			}
+			return cmd
+		}
+		// Out of range or same target: re-enter on current
+		return p.enterInteractiveMode()
+	}
+
 	// Update last key time for polling decay
 	p.interactiveState.LastKeyTime = time.Now()
 

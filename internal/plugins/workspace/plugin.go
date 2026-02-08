@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -441,6 +442,10 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		ctx.Keymap.RegisterPluginBinding(p.getInteractiveExitKey(), "exit-interactive", "workspace-interactive")
 		ctx.Keymap.RegisterPluginBinding(p.getInteractiveCopyKey(), "copy", "workspace-interactive")
 		ctx.Keymap.RegisterPluginBinding(p.getInteractivePasteKey(), "paste", "workspace-interactive")
+		altShiftSymbols := []string{"!", "@", "#", "$", "%", "^", "&", "*", "("}
+		for i, sym := range altShiftSymbols {
+			ctx.Keymap.RegisterPluginBinding("alt+"+sym, fmt.Sprintf("switch-%d", i+1), "workspace-interactive")
+		}
 	}
 
 	// Load saved sidebar width

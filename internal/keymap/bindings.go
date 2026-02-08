@@ -363,6 +363,15 @@ func DefaultBindings() []Binding {
 		{Key: "[", Command: "prev-tab", Context: "workspace-list"},
 		{Key: "]", Command: "next-tab", Context: "workspace-list"},
 		{Key: "F", Command: "fetch-pr", Context: "workspace-list"},
+		{Key: "alt+!", Command: "switch-1", Context: "workspace-list"},
+		{Key: "alt+@", Command: "switch-2", Context: "workspace-list"},
+		{Key: "alt+#", Command: "switch-3", Context: "workspace-list"},
+		{Key: "alt+$", Command: "switch-4", Context: "workspace-list"},
+		{Key: "alt+%", Command: "switch-5", Context: "workspace-list"},
+		{Key: "alt+^", Command: "switch-6", Context: "workspace-list"},
+		{Key: "alt+&", Command: "switch-7", Context: "workspace-list"},
+		{Key: "alt+*", Command: "switch-8", Context: "workspace-list"},
+		{Key: "alt+(", Command: "switch-9", Context: "workspace-list"},
 
 		// Workspace fetch PR context
 		{Key: "esc", Command: "cancel", Context: "workspace-fetch-pr"},
@@ -388,6 +397,15 @@ func DefaultBindings() []Binding {
 		{Key: "k", Command: "scroll-up", Context: "workspace-preview"},
 		{Key: "ctrl+d", Command: "page-down", Context: "workspace-preview"},
 		{Key: "ctrl+u", Command: "page-up", Context: "workspace-preview"},
+		{Key: "alt+!", Command: "switch-1", Context: "workspace-preview"},
+		{Key: "alt+@", Command: "switch-2", Context: "workspace-preview"},
+		{Key: "alt+#", Command: "switch-3", Context: "workspace-preview"},
+		{Key: "alt+$", Command: "switch-4", Context: "workspace-preview"},
+		{Key: "alt+%", Command: "switch-5", Context: "workspace-preview"},
+		{Key: "alt+^", Command: "switch-6", Context: "workspace-preview"},
+		{Key: "alt+&", Command: "switch-7", Context: "workspace-preview"},
+		{Key: "alt+*", Command: "switch-8", Context: "workspace-preview"},
+		{Key: "alt+(", Command: "switch-9", Context: "workspace-preview"},
 
 		// Workspace merge error context
 		{Key: "esc", Command: "dismiss-merge-error", Context: "workspace-merge-error"},
