@@ -370,13 +370,16 @@ func (p *Plugin) StartAgent(wt *Worktree, agentType AgentType) tea.Cmd {
 		_ = exec.Command("tmux", "set-option", "-t", sessionName, "history-limit",
 			strconv.Itoa(tmuxHistoryLimit)).Run()
 
+		// Detect shell type for correct syntax (fish vs posix)
+		shellType := DetectShell()
+
 		// Set TD_SESSION_ID environment variable for td session tracking
-		envCmd := fmt.Sprintf("export TD_SESSION_ID=%s", shellQuote(sessionName))
+		envCmd := GenerateExportCommand("TD_SESSION_ID", sessionName, shellType)
 		_ = exec.Command("tmux", "send-keys", "-t", sessionName, envCmd, "Enter").Run()
 
 		// Apply environment isolation to prevent conflicts (GOWORK, etc.)
 		envOverrides := BuildEnvOverrides(p.ctx.WorkDir)
-		if envCmd := GenerateSingleEnvCommand(envOverrides); envCmd != "" {
+		if envCmd := GenerateSingleEnvCommand(envOverrides, shellType); envCmd != "" {
 			_ = exec.Command("tmux", "send-keys", "-t", sessionName, envCmd, "Enter").Run()
 		}
 
@@ -568,13 +571,16 @@ func (p *Plugin) StartAgentWithOptions(wt *Worktree, agentType AgentType, skipPe
 		_ = exec.Command("tmux", "set-option", "-t", sessionName, "history-limit",
 			strconv.Itoa(tmuxHistoryLimit)).Run()
 
+		// Detect shell type for correct syntax (fish vs posix)
+		shellType := DetectShell()
+
 		// Set TD_SESSION_ID environment variable for td session tracking
-		tdEnvCmd := fmt.Sprintf("export TD_SESSION_ID=%s", shellQuote(sessionName))
+		tdEnvCmd := GenerateExportCommand("TD_SESSION_ID", sessionName, shellType)
 		_ = exec.Command("tmux", "send-keys", "-t", sessionName, tdEnvCmd, "Enter").Run()
 
 		// Apply environment isolation to prevent conflicts (GOWORK, etc.)
 		envOverrides := BuildEnvOverrides(p.ctx.WorkDir)
-		if envCmd := GenerateSingleEnvCommand(envOverrides); envCmd != "" {
+		if envCmd := GenerateSingleEnvCommand(envOverrides, shellType); envCmd != "" {
 			_ = exec.Command("tmux", "send-keys", "-t", sessionName, envCmd, "Enter").Run()
 		}
 

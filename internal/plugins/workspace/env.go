@@ -7,6 +7,23 @@ import (
 	"strings"
 )
 
+// ShellType represents the type of shell for command generation.
+type ShellType string
+
+const (
+	ShellPosix ShellType = "posix"
+	ShellFish  ShellType = "fish"
+)
+
+// DetectShell returns the shell type based on the SHELL environment variable.
+func DetectShell() ShellType {
+	shell := os.Getenv("SHELL")
+	if strings.Contains(shell, "/fish") {
+		return ShellFish
+	}
+	return ShellPosix
+}
+
 // worktreeEnvFile is the name of the per-repo environment override file.
 const worktreeEnvFile = ".worktree-env"
 
@@ -100,14 +117,24 @@ func BuildEnvOverrides(mainRepoPath string) map[string]string {
 
 // GenerateExportCommands generates shell commands to apply environment overrides.
 // Empty values generate unset commands, non-empty generate export commands.
-func GenerateExportCommands(overrides map[string]string) []string {
+// The shell parameter controls syntax: posix uses export/unset, fish uses set -gx/set -e.
+func GenerateExportCommands(overrides map[string]string, shell ShellType) []string {
 	var cmds []string
 	for key, value := range overrides {
 		if value == "" {
-			cmds = append(cmds, "unset "+key)
+			switch shell {
+			case ShellFish:
+				cmds = append(cmds, "set -e "+key)
+			default:
+				cmds = append(cmds, "unset "+key)
+			}
 		} else {
-			// Quote the value for shell safety
-			cmds = append(cmds, "export "+key+"="+shellQuote(value))
+			switch shell {
+			case ShellFish:
+				cmds = append(cmds, "set -gx "+key+" "+shellQuote(value))
+			default:
+				cmds = append(cmds, "export "+key+"="+shellQuote(value))
+			}
 		}
 	}
 	return cmds
@@ -115,24 +142,50 @@ func GenerateExportCommands(overrides map[string]string) []string {
 
 // GenerateSingleEnvCommand returns a single shell command that applies all env overrides.
 // This is less noisy than sending multiple commands individually.
-func GenerateSingleEnvCommand(overrides map[string]string) string {
-	var exports, unsets []string
-	for key, value := range overrides {
-		if value == "" {
-			unsets = append(unsets, key)
-		} else {
-			exports = append(exports, key+"="+shellQuote(value))
+// The shell parameter controls syntax: posix uses export/unset, fish uses set -gx/set -e.
+func GenerateSingleEnvCommand(overrides map[string]string, shell ShellType) string {
+	switch shell {
+	case ShellFish:
+		// Fish doesn't support batched export; emit individual set commands joined with "; "
+		var parts []string
+		for key, value := range overrides {
+			if value == "" {
+				parts = append(parts, "set -e "+key)
+			} else {
+				parts = append(parts, "set -gx "+key+" "+shellQuote(value))
+			}
 		}
-	}
+		return strings.Join(parts, "; ")
+	default:
+		var exports, unsets []string
+		for key, value := range overrides {
+			if value == "" {
+				unsets = append(unsets, key)
+			} else {
+				exports = append(exports, key+"="+shellQuote(value))
+			}
+		}
 
-	var parts []string
-	if len(exports) > 0 {
-		parts = append(parts, "export "+strings.Join(exports, " "))
+		var parts []string
+		if len(exports) > 0 {
+			parts = append(parts, "export "+strings.Join(exports, " "))
+		}
+		if len(unsets) > 0 {
+			parts = append(parts, "unset "+strings.Join(unsets, " "))
+		}
+		return strings.Join(parts, "; ")
 	}
-	if len(unsets) > 0 {
-		parts = append(parts, "unset "+strings.Join(unsets, " "))
+}
+
+// GenerateExportCommand generates a single export command for one key=value pair.
+// The shell parameter controls syntax: posix uses export, fish uses set -gx.
+func GenerateExportCommand(key, value string, shell ShellType) string {
+	switch shell {
+	case ShellFish:
+		return "set -gx " + key + " " + shellQuote(value)
+	default:
+		return "export " + key + "=" + shellQuote(value)
 	}
-	return strings.Join(parts, "; ")
 }
 
 // ApplyEnvOverrides applies overrides to an existing environment slice.

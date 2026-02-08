@@ -1039,13 +1039,16 @@ func (p *Plugin) startAgentWithResumeCmd(wt *Worktree, agentType AgentType, skip
 		_ = exec.Command("tmux", "set-option", "-t", sessionName, "history-limit",
 			strconv.Itoa(tmuxHistoryLimit)).Run()
 
+		// Detect shell type for correct syntax (fish vs posix)
+		shellType := DetectShell()
+
 		// Set TD_SESSION_ID environment variable for td session tracking
-		tdEnvCmd := fmt.Sprintf("export TD_SESSION_ID=%s", shellQuote(sessionName))
+		tdEnvCmd := GenerateExportCommand("TD_SESSION_ID", sessionName, shellType)
 		_ = exec.Command("tmux", "send-keys", "-t", sessionName, tdEnvCmd, "Enter").Run()
 
 		// Apply environment isolation
 		envOverrides := BuildEnvOverrides(p.ctx.WorkDir)
-		if envCmd := GenerateSingleEnvCommand(envOverrides); envCmd != "" {
+		if envCmd := GenerateSingleEnvCommand(envOverrides, shellType); envCmd != "" {
 			_ = exec.Command("tmux", "send-keys", "-t", sessionName, envCmd, "Enter").Run()
 		}
 

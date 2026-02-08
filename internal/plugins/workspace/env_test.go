@@ -150,27 +150,83 @@ func TestGenerateExportCommands(t *testing.T) {
 		"QUOTED":  "has spaces",
 	}
 
-	cmds := GenerateExportCommands(overrides)
+	t.Run("posix", func(t *testing.T) {
+		cmds := GenerateExportCommands(overrides, ShellPosix)
+		sort.Strings(cmds)
 
-	// Sort for consistent comparison
-	sort.Strings(cmds)
-
-	expected := []string{
-		"export GOWORK='off'",
-		"export QUOTED='has spaces'",
-		"unset CLEARED",
-	}
-	sort.Strings(expected)
-
-	if len(cmds) != len(expected) {
-		t.Fatalf("expected %d commands, got %d: %v", len(expected), len(cmds), cmds)
-	}
-
-	for i, cmd := range cmds {
-		if cmd != expected[i] {
-			t.Errorf("command %d: expected %q, got %q", i, expected[i], cmd)
+		expected := []string{
+			"export GOWORK='off'",
+			"export QUOTED='has spaces'",
+			"unset CLEARED",
 		}
+		sort.Strings(expected)
+
+		if len(cmds) != len(expected) {
+			t.Fatalf("expected %d commands, got %d: %v", len(expected), len(cmds), cmds)
+		}
+		for i, cmd := range cmds {
+			if cmd != expected[i] {
+				t.Errorf("command %d: expected %q, got %q", i, expected[i], cmd)
+			}
+		}
+	})
+
+	t.Run("fish", func(t *testing.T) {
+		cmds := GenerateExportCommands(overrides, ShellFish)
+		sort.Strings(cmds)
+
+		expected := []string{
+			"set -e CLEARED",
+			"set -gx GOWORK 'off'",
+			"set -gx QUOTED 'has spaces'",
+		}
+		sort.Strings(expected)
+
+		if len(cmds) != len(expected) {
+			t.Fatalf("expected %d commands, got %d: %v", len(expected), len(cmds), cmds)
+		}
+		for i, cmd := range cmds {
+			if cmd != expected[i] {
+				t.Errorf("command %d: expected %q, got %q", i, expected[i], cmd)
+			}
+		}
+	})
+}
+
+func TestGenerateSingleEnvCommand(t *testing.T) {
+	overrides := map[string]string{
+		"GOWORK": "off",
 	}
+
+	t.Run("posix", func(t *testing.T) {
+		cmd := GenerateSingleEnvCommand(overrides, ShellPosix)
+		if cmd != "export GOWORK='off'" {
+			t.Errorf("expected posix export, got %q", cmd)
+		}
+	})
+
+	t.Run("fish", func(t *testing.T) {
+		cmd := GenerateSingleEnvCommand(overrides, ShellFish)
+		if cmd != "set -gx GOWORK 'off'" {
+			t.Errorf("expected fish set, got %q", cmd)
+		}
+	})
+}
+
+func TestGenerateExportCommand(t *testing.T) {
+	t.Run("posix", func(t *testing.T) {
+		cmd := GenerateExportCommand("FOO", "bar", ShellPosix)
+		if cmd != "export FOO='bar'" {
+			t.Errorf("expected %q, got %q", "export FOO='bar'", cmd)
+		}
+	})
+
+	t.Run("fish", func(t *testing.T) {
+		cmd := GenerateExportCommand("FOO", "bar", ShellFish)
+		if cmd != "set -gx FOO 'bar'" {
+			t.Errorf("expected %q, got %q", "set -gx FOO 'bar'", cmd)
+		}
+	})
 }
 
 func TestApplyEnvOverrides(t *testing.T) {
