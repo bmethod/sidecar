@@ -66,6 +66,7 @@ func DefaultBindings() []Binding {
 		{Key: "b", Command: "branch-picker", Context: "git-status"},
 		{Key: "z", Command: "stash", Context: "git-status"},
 		{Key: "Z", Command: "stash-pop", Context: "git-status"},
+		{Key: "ctrl+z", Command: "stash-apply", Context: "git-status"},
 		{Key: "O", Command: "open-in-file-browser", Context: "git-status"},
 		{Key: "o", Command: "open-in-github", Context: "git-status"},
 		{Key: "y", Command: "yank-file", Context: "git-status"},

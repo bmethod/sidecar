@@ -330,6 +330,10 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		// Pop latest stash - show confirm modal first
 		return p, p.confirmStashPop()
 
+	case "ctrl+z":
+		// Apply latest stash (non-destructive, stash entry preserved)
+		return p, p.doStashApply()
+
 	case "b":
 		// Open branch picker
 		p.branchReturnMode = p.viewMode

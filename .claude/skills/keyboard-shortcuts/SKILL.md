@@ -104,6 +104,7 @@ TD shortcuts are dynamically exported from TD itself via `ExportBindings()` and 
 | `b` | branch | Branch operations |
 | `z` | stash | Stash changes |
 | `Z` | stash-pop | Pop stash |
+| `ctrl+z` | stash-apply | Stash apply |
 | `o` | open-in-github | Open in GitHub |
 | `O` | open-in-file-browser | Open in file browser |
 | `y` | yank-file | Copy file info |

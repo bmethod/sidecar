@@ -92,6 +92,14 @@ func (p *Plugin) doStashPop() tea.Cmd {
 	}
 }
 
+// doStashApply applies the latest stash without removing it.
+func (p *Plugin) doStashApply() tea.Cmd {
+	workDir := p.repoRoot
+	return func() tea.Msg {
+		err := StashApply(workDir, "stash@{0}")
+		return StashResultMsg{Operation: "apply", Ref: "stash@{0}", Err: err}
+	}
+}
 
 // doFetch fetches from remote.
 func (p *Plugin) doFetch() tea.Cmd {

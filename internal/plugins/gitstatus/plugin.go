@@ -663,10 +663,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		// Show success toast and refresh
 		var toastMsg string
-		if msg.Operation == "push" {
+		switch msg.Operation {
+		case "push":
 			toastMsg = "Stashed changes"
-		} else {
-			toastMsg = "Applied " + msg.Ref
+		case "apply":
+			toastMsg = "Stash applied"
+		default:
+			toastMsg = "Stash popped"
 		}
 		return p, tea.Batch(
 			p.refresh(),
@@ -936,6 +939,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "show-history", Name: "History", Description: "Jump to commit history", Category: plugin.CategoryNavigation, Context: "git-status", Priority: 3},
 		{ID: "stash", Name: "Stash", Description: "Stash changes", Category: plugin.CategoryGit, Context: "git-status", Priority: 4},
 		{ID: "stash-pop", Name: "Pop", Description: "Pop latest stash", Category: plugin.CategoryGit, Context: "git-status", Priority: 4},
+		{ID: "stash-apply", Name: "Apply", Description: "Apply latest stash", Category: plugin.CategoryGit, Context: "git-status", Priority: 4},
 		{ID: "open-in-file-browser", Name: "Browse", Description: "Open file in file browser", Category: plugin.CategoryNavigation, Context: "git-status", Priority: 4},
 		{ID: "open-in-github", Name: "GitHub", Description: "Open commit in GitHub", Category: plugin.CategoryActions, Context: "git-status", Priority: 4},
 		{ID: "toggle-sidebar", Name: "Sidebar", Description: "Toggle sidebar visibility", Category: plugin.CategoryView, Context: "git-status", Priority: 5},
@@ -1281,7 +1285,7 @@ type PushSuccessClearMsg struct{}
 
 // StashResultMsg is sent when a stash operation completes.
 type StashResultMsg struct {
-	Operation string // "push" or "pop"
+	Operation string // "push", "pop", or "apply"
 	Ref       string // stash ref for display (e.g. "stash@{0}")
 	Err       error
 }
