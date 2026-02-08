@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
-      "Bash(td create:*)"
+      "Bash(td create:*)",
+      "Bash(gh auth status:*)"
     ]
   }
 }
