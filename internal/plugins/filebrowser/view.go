@@ -518,11 +518,11 @@ func (p *Plugin) renderSearchResults(sb *strings.Builder, visibleHeight int) str
 
 	var resultSB strings.Builder
 	for i := searchScrollOff; i < end; i++ {
-		node := p.searchMatches[i]
+		match := p.searchMatches[i]
 		selected := i == p.searchCursor
 
-		// Show full path for search results (more useful than just name)
-		displayPath := node.Path
+		// Show full path for search results with fuzzy match highlighting
+		displayPath := match.Path
 		if len(displayPath) > maxWidth-2 {
 			displayPath = "…" + displayPath[len(displayPath)-maxWidth+3:]
 		}
@@ -534,11 +534,9 @@ func (p *Plugin) renderSearchResults(sb *strings.Builder, visibleHeight int) str
 			}
 			resultSB.WriteString(styles.ListItemSelected.Render(displayPath))
 		} else {
-			// Style based on file type
-			if node.IsDir {
-				resultSB.WriteString(styles.FileBrowserDir.Render(displayPath))
-			} else if node.IsIgnored {
-				resultSB.WriteString(styles.FileBrowserIgnored.Render(displayPath))
+			// Render with fuzzy match highlighting (all items are files from cache)
+			if len(match.MatchRanges) > 0 && len(match.Path) <= maxWidth-2 {
+				resultSB.WriteString(p.highlightFuzzyMatch(displayPath, match.MatchRanges))
 			} else {
 				resultSB.WriteString(styles.FileBrowserFile.Render(displayPath))
 			}

@@ -564,3 +564,145 @@ func TestDiscoverRelatedProjectDirs_EmptyStorage(t *testing.T) {
 		t.Errorf("expected empty slice, got %v", related)
 	}
 }
+
+func TestMalformedProjectJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+
+	validJSON := `{"id":"proj_valid","worktree":"/tmp/valid-project","vcs":"git","time":{"created":1767000000000,"updated":1767100000000}}`
+	if err := os.WriteFile(filepath.Join(projectDir, "valid.json"), []byte(validJSON), 0644); err != nil {
+		t.Fatalf("failed to write valid project: %v", err)
+	}
+
+	malformedJSON := `{invalid json`
+	if err := os.WriteFile(filepath.Join(projectDir, "bad.json"), []byte(malformedJSON), 0644); err != nil {
+		t.Fatalf("failed to write malformed project: %v", err)
+	}
+
+	a := &Adapter{
+		storageDir:   tmpDir,
+		projectIndex: make(map[string]*Project),
+		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+
+	if err := a.loadProjects(); err != nil {
+		t.Fatalf("loadProjects should not error on malformed JSON, got: %v", err)
+	}
+
+	if !a.projectsLoaded {
+		t.Error("projectsLoaded should be true")
+	}
+
+	if len(a.projectIndex) != 1 {
+		t.Errorf("expected 1 project in index, got %d", len(a.projectIndex))
+	}
+
+	if _, ok := a.projectIndex["/tmp/valid-project"]; !ok {
+		t.Error("expected valid project to be in index")
+	}
+}
+
+func TestMalformedSessionJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectPath := filepath.Join(tmpDir, "myproject")
+	if err := os.MkdirAll(projectPath, 0755); err != nil {
+		t.Fatalf("failed to create project path: %v", err)
+	}
+
+	projectDir := filepath.Join(tmpDir, "storage", "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+	projectJSON := fmt.Sprintf(`{"id":"proj1","worktree":"%s","vcs":"git","time":{"created":1767000000000,"updated":1767100000000}}`, projectPath)
+	if err := os.WriteFile(filepath.Join(projectDir, "proj1.json"), []byte(projectJSON), 0644); err != nil {
+		t.Fatalf("failed to write project file: %v", err)
+	}
+
+	sessionDir := filepath.Join(tmpDir, "storage", "session", "proj1")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+
+	now := time.Now().UnixMilli()
+	validSession := fmt.Sprintf(`{"id":"ses_good","title":"Good Session","parentID":"","time":{"created":%d,"updated":%d}}`, now, now)
+	if err := os.WriteFile(filepath.Join(sessionDir, "ses_good.json"), []byte(validSession), 0644); err != nil {
+		t.Fatalf("failed to write valid session: %v", err)
+	}
+
+	malformedSession := `{not valid json!!!`
+	if err := os.WriteFile(filepath.Join(sessionDir, "ses_bad.json"), []byte(malformedSession), 0644); err != nil {
+		t.Fatalf("failed to write malformed session: %v", err)
+	}
+
+	a := &Adapter{
+		storageDir:   filepath.Join(tmpDir, "storage"),
+		projectIndex: make(map[string]*Project),
+		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+
+	sessions, err := a.Sessions(projectPath)
+	if err != nil {
+		t.Fatalf("Sessions should not error on malformed JSON, got: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session (malformed skipped), got %d", len(sessions))
+	}
+
+	if sessions[0].ID != "ses_good" {
+		t.Errorf("expected session ID %q, got %q", "ses_good", sessions[0].ID)
+	}
+
+	if sessions[0].Name != "Good Session" {
+		t.Errorf("expected session name %q, got %q", "Good Session", sessions[0].Name)
+	}
+}
+
+func TestMalformedMessageJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	messageDir := filepath.Join(tmpDir, "message", "ses_test")
+	if err := os.MkdirAll(messageDir, 0755); err != nil {
+		t.Fatalf("failed to create message dir: %v", err)
+	}
+
+	now := time.Now().UnixMilli()
+	validMsg := fmt.Sprintf(`{"id":"msg_good","sessionID":"ses_test","role":"user","time":{"created":%d}}`, now)
+	if err := os.WriteFile(filepath.Join(messageDir, "msg_good.json"), []byte(validMsg), 0644); err != nil {
+		t.Fatalf("failed to write valid message: %v", err)
+	}
+
+	malformedMsg := `{totally broken json`
+	if err := os.WriteFile(filepath.Join(messageDir, "msg_bad.json"), []byte(malformedMsg), 0644); err != nil {
+		t.Fatalf("failed to write malformed message: %v", err)
+	}
+
+	a := &Adapter{
+		storageDir:   tmpDir,
+		projectIndex: make(map[string]*Project),
+		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+
+	msgMap, err := a.batchReadMessages(messageDir)
+	if err != nil {
+		t.Fatalf("batchReadMessages should not error on malformed JSON, got: %v", err)
+	}
+
+	if len(msgMap) != 1 {
+		t.Fatalf("expected 1 message (malformed skipped), got %d", len(msgMap))
+	}
+
+	msg, ok := msgMap["msg_good"]
+	if !ok {
+		t.Fatal("expected msg_good in result map")
+	}
+
+	if msg.Role != "user" {
+		t.Errorf("expected role %q, got %q", "user", msg.Role)
+	}
+}

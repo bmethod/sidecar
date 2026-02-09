@@ -14,10 +14,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/adapter"
+	_ "github.com/marcus/sidecar/internal/adapter/amp"
 	_ "github.com/marcus/sidecar/internal/adapter/claudecode"
 	_ "github.com/marcus/sidecar/internal/adapter/codex"
 	_ "github.com/marcus/sidecar/internal/adapter/cursor"
 	_ "github.com/marcus/sidecar/internal/adapter/geminicli"
+	_ "github.com/marcus/sidecar/internal/adapter/kiro"
 	_ "github.com/marcus/sidecar/internal/adapter/opencode"
 	_ "github.com/marcus/sidecar/internal/adapter/warp"
 	"github.com/marcus/sidecar/internal/app"
@@ -53,6 +55,11 @@ var (
 
 func main() {
 	flag.Parse()
+
+	// Unset TMUX so sidecar's internal tmux sessions are independent of any
+	// outer tmux session. This allows prefix+d to detach from the workspace's
+	// inner session rather than the user's outer tmux.
+	os.Unsetenv("TMUX")
 
 	// Start pprof server if enabled (for memory profiling)
 	if pprofPort := os.Getenv("SIDECAR_PPROF"); pprofPort != "" {

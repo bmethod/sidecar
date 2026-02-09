@@ -675,3 +675,82 @@ func TestClearLastWorktreePath_NilMap(t *testing.T) {
 		t.Fatalf("ClearLastWorktreePath() with nil map should not error: %v", err)
 	}
 }
+
+func TestGetLineWrapEnabled_Default(t *testing.T) {
+	originalCurrent := current
+	defer func() { current = originalCurrent }()
+
+	current = nil
+	enabled := GetLineWrapEnabled()
+	if enabled {
+		t.Errorf("GetLineWrapEnabled() with nil current = %v, want false", enabled)
+	}
+}
+
+func TestGetLineWrapEnabled_Set(t *testing.T) {
+	originalCurrent := current
+	defer func() { current = originalCurrent }()
+
+	current = &State{LineWrapEnabled: true}
+	enabled := GetLineWrapEnabled()
+	if !enabled {
+		t.Errorf("GetLineWrapEnabled() = %v, want true", enabled)
+	}
+}
+
+func TestSetLineWrapEnabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalPath := path
+	originalCurrent := current
+	defer func() {
+		path = originalPath
+		current = originalCurrent
+	}()
+
+	stateFile := filepath.Join(tmpDir, "state.json")
+	path = stateFile
+	current = &State{LineWrapEnabled: false}
+
+	err := SetLineWrapEnabled(true)
+	if err != nil {
+		t.Fatalf("SetLineWrapEnabled() failed: %v", err)
+	}
+
+	if !current.LineWrapEnabled {
+		t.Errorf("current.LineWrapEnabled = %v, want true", current.LineWrapEnabled)
+	}
+
+	// Verify saved to disk
+	data, _ := os.ReadFile(stateFile)
+	var loaded State
+	_ = json.Unmarshal(data, &loaded)
+	if !loaded.LineWrapEnabled {
+		t.Errorf("saved LineWrapEnabled = %v, want true", loaded.LineWrapEnabled)
+	}
+}
+
+func TestSetLineWrapEnabled_InitializesNilState(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalPath := path
+	originalCurrent := current
+	defer func() {
+		path = originalPath
+		current = originalCurrent
+	}()
+
+	stateFile := filepath.Join(tmpDir, "state.json")
+	path = stateFile
+	current = nil
+
+	err := SetLineWrapEnabled(true)
+	if err != nil {
+		t.Fatalf("SetLineWrapEnabled() failed: %v", err)
+	}
+
+	if current == nil {
+		t.Error("SetLineWrapEnabled() should initialize current state")
+	}
+	if !current.LineWrapEnabled {
+		t.Errorf("LineWrapEnabled = %v, want true", current.LineWrapEnabled)
+	}
+}

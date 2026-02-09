@@ -212,6 +212,34 @@ func TestStripXMLTags(t *testing.T) {
 			input: "Mixed <other>tags</other> with <user_query>Target</user_query>",
 			want:  "Target",
 		},
+		{
+			input: "",
+			want:  "",
+		},
+		{
+			input: "   ",
+			want:  "",
+		},
+		{
+			input: "<outer><inner>nested</inner></outer>",
+			want:  "nested",
+		},
+		{
+			input: "<br/> some text",
+			want:  "some text",
+		},
+		{
+			input: `<div class="foo">bar</div>`,
+			want:  "bar",
+		},
+		{
+			input: "<user_query>first</user_query> <user_query>second</user_query>",
+			want:  "first",
+		},
+		{
+			input: "<user_query>  spaced  </user_query>",
+			want:  "spaced",
+		},
 	}
 
 	for _, tt := range tests {

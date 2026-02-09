@@ -155,7 +155,7 @@ type Plugin struct {
 	// Search state (tree filename search)
 	searchMode    bool
 	searchQuery   string
-	searchMatches []*FileNode
+	searchMatches []QuickOpenMatch
 	searchCursor  int
 
 	// Auto-open state

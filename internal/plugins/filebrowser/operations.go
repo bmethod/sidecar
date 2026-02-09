@@ -965,28 +965,20 @@ func (p *Plugin) getPathSuggestions(query string) []string {
 	return paths
 }
 
-// updateSearchMatches finds all nodes matching the search query.
+// updateSearchMatches finds all files matching the search query using the quick open cache.
 func (p *Plugin) updateSearchMatches() {
 	p.searchMatches = nil
 	if p.searchQuery == "" {
 		return
 	}
 
-	query := strings.ToLower(p.searchQuery)
-
-	// Walk entire tree (not just visible nodes), excluding ignored files
-	p.walkTreeForSearch(p.tree.Root, func(node *FileNode) {
-		name := strings.ToLower(node.Name)
-		if strings.Contains(name, query) {
-			p.searchMatches = append(p.searchMatches, node)
-		}
-	})
-
-	// Limit matches to prevent UI clutter
-	if len(p.searchMatches) > 20 {
-		p.searchMatches = p.searchMatches[:20]
+	// Build file cache if not yet built (same cache as Ctrl+P)
+	if len(p.quickOpenFiles) == 0 {
+		p.buildFileCache()
 	}
 
+	// Use fuzzy filter on cached files (same as Ctrl+P)
+	p.searchMatches = FuzzyFilter(p.quickOpenFiles, p.searchQuery, 20)
 	p.searchCursor = 0
 }
 
@@ -1052,31 +1044,6 @@ func (p *Plugin) walkTree(node *FileNode, fn func(*FileNode)) {
 	}
 }
 
-// walkTreeForSearch recursively visits nodes, skipping ignored files/directories.
-func (p *Plugin) walkTreeForSearch(node *FileNode, fn func(*FileNode)) {
-	if node == nil {
-		return
-	}
-	for _, child := range node.Children {
-		// Skip .git explicitly (even if not in .gitignore)
-		if child.Name == ".git" {
-			continue
-		}
-		// Skip ignored files and directories (like node_modules, etc.)
-		if child.IsIgnored {
-			continue
-		}
-		fn(child)
-		if child.IsDir {
-			// Load children if not already loaded
-			if len(child.Children) == 0 {
-				_ = p.tree.loadChildren(child)
-			}
-			p.walkTreeForSearch(child, fn)
-		}
-	}
-}
-
 // jumpToSearchMatch navigates to the currently selected search match.
 func (p *Plugin) jumpToSearchMatch() {
 	if len(p.searchMatches) == 0 || p.searchCursor >= len(p.searchMatches) {
@@ -1085,31 +1052,17 @@ func (p *Plugin) jumpToSearchMatch() {
 
 	matchPath := p.searchMatches[p.searchCursor].Path
 
-	// Find the node fresh from the current tree (in case tree was refreshed)
-	var currentNode *FileNode
-	p.walkTree(p.tree.Root, func(node *FileNode) {
-		if node.Path == matchPath {
-			currentNode = node
-		}
-	})
-
-	if currentNode == nil {
+	// Use efficient targeted tree walking
+	targetNode := p.findAndExpandPath(matchPath)
+	if targetNode == nil {
 		return
 	}
 
-	// Expand all parent directories to make the match visible
-	p.expandParents(currentNode)
-
-	// Reflatten the tree after expanding
 	p.tree.Flatten()
 
-	// Find the match in the flat list
-	for i, node := range p.tree.FlatList {
-		if node.Path == matchPath {
-			p.treeCursor = i
-			p.ensureTreeCursorVisible()
-			break
-		}
+	if idx := p.tree.IndexOf(targetNode); idx >= 0 {
+		p.treeCursor = idx
+		p.ensureTreeCursorVisible()
 	}
 }
 

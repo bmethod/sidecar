@@ -2,6 +2,33 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.70.0] - 2026-02-08
+
+### Features
+
+- **Amp Code Adapter**: View Amp Code IDE threads in the conversations plugin, with token usage, tool calls, and project matching
+- **Kiro CLI Adapter**: View Kiro CLI conversations from SQLite storage, with message parsing and project detection
+
+## [v0.69.1] - 2026-02-08
+
+### Bug Fixes
+
+- Fix file search (`/`) hanging on large projects by reusing Ctrl+P file cache with fuzzy matching (#107)
+
+### Dependencies
+
+- Update td to v0.32.0
+
+## [v0.69.0] - 2026-02-08
+
+### Features
+
+- **Homebrew Formula**: Install via `brew install marcus/tap/sidecar` — builds from source for native Apple Silicon performance
+
+### Improvements
+
+- Better PR fetching in git plugin
+
 ## [v0.68.0] - 2026-02-07
 
 ### Features

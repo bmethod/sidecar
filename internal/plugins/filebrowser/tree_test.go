@@ -6,6 +6,72 @@ import (
 	"testing"
 )
 
+func TestIsSystemFile(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"macOS DS_Store", ".DS_Store", true},
+		{"macOS Spotlight", ".Spotlight-V100", true},
+		{"macOS Trashes", ".Trashes", true},
+		{"macOS fseventsd", ".fseventsd", true},
+		{"macOS TemporaryItems", ".TemporaryItems", true},
+		{"macOS DocumentRevisions", ".DocumentRevisions-V100", true},
+		{"Windows Thumbs.db", "Thumbs.db", true},
+		{"Windows desktop.ini", "desktop.ini", true},
+		{"Windows recycle bin", "$RECYCLE.BIN", true},
+		{"macOS resource fork", "._something", true},
+		{"macOS resource fork minimal", "._", true},
+		{"regular file", "main.go", false},
+		{"dotfile", ".gitignore", false},
+		{"empty string", "", false},
+		{"underscore only", "_test.go", false},
+		{"dot only", ".", false},
+		{"double dot", "..", false},
+		{"similar but not system", ".DS_Store2", false},
+		{"case sensitive DS_Store", ".ds_store", false},
+		{"case sensitive Thumbs", "thumbs.db", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSystemFile(tt.input); got != tt.expected {
+				t.Errorf("isSystemFile(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFileTree_SystemFilesFiltered(t *testing.T) {
+	tmpDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".DS_Store"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "Thumbs.db"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "._resource"), []byte(""), 0644)
+
+	tree := NewFileTree(tmpDir)
+	if err := tree.Build(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, node := range tree.FlatList {
+		if isSystemFile(node.Name) {
+			t.Errorf("system file %q should have been filtered from tree", node.Name)
+		}
+	}
+
+	var foundMain bool
+	for _, node := range tree.FlatList {
+		if node.Name == "main.go" {
+			foundMain = true
+			break
+		}
+	}
+	if !foundMain {
+		t.Error("Expected main.go to be in the tree")
+	}
+}
+
 func TestFileTree_Build(t *testing.T) {
 	// Use current directory for testing
 	cwd, err := os.Getwd()

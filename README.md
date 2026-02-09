@@ -14,11 +14,21 @@ Sidecar puts your entire development workflow in one shell: plan tasks with [td]
 
 ## Quick Install
 
+### macOS (recommended)
+
+```bash
+brew install marcus/tap/sidecar
+```
+
+This builds from source and avoids macOS Gatekeeper warnings.
+
+### Linux / Other
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/marcus/sidecar/main/scripts/setup.sh | bash
 ```
 
-**Also available via:** `brew install marcus/tap/sidecar` · [Binary downloads](https://github.com/marcus/sidecar/releases) · [Manual install](docs/getting-started.md)
+**More options:** [Binary downloads](https://github.com/marcus/sidecar/releases) · [Manual install](docs/getting-started.md)
 
 ## Requirements
 
@@ -98,7 +108,7 @@ View staged, modified, and untracked files with a split-pane interface. The side
 
 ### Conversations
 
-Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Claude Code, Codex, Cursor CLI, Gemini CLI, OpenCode, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
+Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Amp Code, Claude Code, Codex, Cursor CLI, Gemini CLI, Kiro, OpenCode, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
 
 ![Conversations](docs/screenshots/sidecar-conversations.png)
 
@@ -250,6 +260,11 @@ Config file: `~/.config/sidecar/config.json`
   }
 }
 ```
+
+## Contributing
+
+- **Bug reports**: [Open an issue](https://github.com/marcus/sidecar/issues)
+- **Feature requests**: Check the [Sidecar Roadmap](https://github.com/users/marcus/projects/3) for planned features and backlog
 
 ## Development
 

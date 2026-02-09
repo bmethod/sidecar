@@ -192,3 +192,93 @@ func TestCommitStats_Fields(t *testing.T) {
 		t.Errorf("Deletions = %d, want 25", stats.Deletions)
 	}
 }
+
+func findRepoRoot(t *testing.T) string {
+	t.Helper()
+	workDir, err := os.Getwd()
+	if err != nil {
+		t.Skip("cannot get working directory")
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(workDir, ".git")); err == nil {
+			return workDir
+		}
+		parent := filepath.Dir(workDir)
+		if parent == workDir {
+			t.Skip("not in a git repo")
+		}
+		workDir = parent
+	}
+}
+
+func TestGetCommitDiff_EmptyParentHash(t *testing.T) {
+	workDir := findRepoRoot(t)
+
+	out, err := exec.Command("git", "-C", workDir, "log", "--no-merges", "--diff-filter=M", "--format=%H", "-1").Output()
+	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
+		t.Skip("no non-merge commits with modified files in repo")
+	}
+	hash := strings.TrimSpace(string(out))
+
+	filesOut, err := exec.Command("git", "-C", workDir, "diff-tree", "--no-commit-id", "-r", "--name-only", hash).Output()
+	if err != nil || len(strings.TrimSpace(string(filesOut))) == 0 {
+		t.Skip("commit has no files")
+	}
+	filePath := strings.Split(strings.TrimSpace(string(filesOut)), "\n")[0]
+
+	diff, err := GetCommitDiff(workDir, hash, filePath, "")
+	if err != nil {
+		t.Fatalf("GetCommitDiff(%q, %q, \"\"): %v", hash, filePath, err)
+	}
+	if diff == "" {
+		t.Errorf("expected non-empty diff for commit %s file %s with empty parentHash", hash, filePath)
+	}
+}
+
+func TestGetCommitDiff_WithParentHash(t *testing.T) {
+	workDir := findRepoRoot(t)
+
+	mergeOut, err := exec.Command("git", "-C", workDir, "log", "--merges", "--format=%H", "-1").Output()
+	if err != nil || len(strings.TrimSpace(string(mergeOut))) == 0 {
+		t.Skip("no merge commits in repo")
+	}
+	hash := strings.TrimSpace(string(mergeOut))
+
+	parentOut, err := exec.Command("git", "-C", workDir, "rev-parse", hash+"^1").Output()
+	if err != nil {
+		t.Skipf("cannot get first parent of %s: %v", hash, err)
+	}
+	parentHash := strings.TrimSpace(string(parentOut))
+
+	filesOut, err := exec.Command("git", "-C", workDir, "diff", "--name-only", parentHash, hash).Output()
+	if err != nil || len(strings.TrimSpace(string(filesOut))) == 0 {
+		t.Skip("merge commit has no changed files between parent and merge")
+	}
+	filePath := strings.Split(strings.TrimSpace(string(filesOut)), "\n")[0]
+
+	diff, err := GetCommitDiff(workDir, hash, filePath, parentHash)
+	if err != nil {
+		t.Fatalf("GetCommitDiff(%q, %q, %q): %v", hash, filePath, parentHash, err)
+	}
+	if diff == "" {
+		t.Errorf("expected non-empty diff for merge commit %s file %s with parentHash %s", hash, filePath, parentHash)
+	}
+}
+
+func TestGetCommitDiff_NonExistentPath(t *testing.T) {
+	workDir := findRepoRoot(t)
+
+	out, err := exec.Command("git", "-C", workDir, "log", "--format=%H", "-1").Output()
+	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
+		t.Skip("no commits in repo")
+	}
+	hash := strings.TrimSpace(string(out))
+
+	diff, err := GetCommitDiff(workDir, hash, "nonexistent/path/that/does/not/exist.xyz", "")
+	if err != nil {
+		t.Fatalf("GetCommitDiff with non-existent path returned error: %v", err)
+	}
+	if diff != "" {
+		t.Errorf("expected empty diff for non-existent path, got: %q", diff)
+	}
+}

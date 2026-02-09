@@ -1181,11 +1181,8 @@ func (p *Plugin) handleSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			match := p.searchMatches[p.searchCursor]
 			p.jumpToSearchMatch()
 			p.searchMode = false
-			// If it's a file, load preview
-			if !match.IsDir {
-				return p, p.openTab(match.Path, TabOpenReplace)
-			}
-			return p, nil
+			// Open preview for the matched file (quickOpenFiles only contains files, not dirs)
+			return p, p.openTab(match.Path, TabOpenReplace)
 		}
 		p.searchMode = false
 
