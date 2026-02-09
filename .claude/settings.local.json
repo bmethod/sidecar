@@ -1,8 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(grep:*)",
-      "Bash(td create:*)"
-    ]
+    "allow": ["Bash(grep:*)", "Bash(td create:*)"]
   }
 }
